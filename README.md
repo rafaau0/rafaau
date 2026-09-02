@@ -49,7 +49,7 @@ Os vídeos baixados ficam em `exports/downloads` e os resultados das análises e
 ## Gerar o executável
 
 ```powershell
-.\.venv\Scripts\python.exe -m PyInstaller --noconfirm --clean --onefile --windowed --name NeivaPlanner --icon assets\neiva_logo.ico --add-data "assets\neiva_logo.png;assets" --add-data "assets\neiva_logo.ico;assets" content_planner\main.py
+.\.venv\Scripts\python.exe -m PyInstaller --noconfirm --clean NeivaPlanner.spec
 ```
 
 O arquivo final será `dist\NeivaPlanner.exe`. Ao abrir o executável, as pastas `database` e `exports` são criadas ao lado dele.
