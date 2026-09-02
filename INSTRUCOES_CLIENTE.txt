@@ -1,0 +1,17 @@
+NEIVA PLANNER
+
+COMO ABRIR
+1. Abra NeivaPlanner.exe.
+2. Cadastre os clientes e organize os conteúdos no calendário.
+3. Exporte o PDF ou envie os conteúdos ao Trello quando necessário.
+
+PASTAS IMPORTANTES
+- database: guarda clientes, conteúdos e configurações.
+- exports: guarda os PDFs exportados.
+
+BACKUP
+Copie periodicamente database\content_planner.db para um local seguro.
+
+TRELLO
+Na tela Configurações, informe TRELLO_API_KEY, TRELLO_TOKEN e TRELLO_BOARD_ID e clique em Salvar credenciais.
+Os conteúdos enviados uma vez não serão duplicados em novos envios.
