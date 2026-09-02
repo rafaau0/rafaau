@@ -18,7 +18,7 @@ Em **Baixar YouTube**, baixe vídeos públicos apenas quando você tiver direito
 
 Em **Encarte de Ofertas**, importe uma planilha XLSX com colunas de descrição e valor/preço, associe uma pasta de fotos e preencha um modelo PSD pelo Photoshop. Também é possível extrair fotos de grupos `GRUPO01`, `GRUPO02` etc. e exportar PSDs para JPG/PDF.
 
-No estado atual, esse módulo reutiliza a automação complementar `AUTOMAÇÃO LIDERANÇA - FUNCIONAL V.1.0.0`, que deve permanecer como pasta irmã de `Neiva-Planner-main` dentro de `PROJETOS`.
+O módulo é independente e já inclui a automação necessária. Não requer a pasta antiga da Automação Liderança.
 
 ## Executar em desenvolvimento
 
