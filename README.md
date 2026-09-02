@@ -52,7 +52,7 @@ Os vídeos baixados ficam em `exports/downloads` e os resultados das análises e
 .\.venv\Scripts\python.exe -m PyInstaller --noconfirm --clean NeivaPlanner.spec
 ```
 
-O arquivo final será `dist\NeivaPlanner.exe`. Ao abrir o executável, as pastas `database` e `exports` são criadas ao lado dele.
+O arquivo final será `dist\NeivaPlanner_v1.exe`. Ao abrir o executável, as pastas `database` e `exports` são criadas ao lado dele.
 
 ## Trello
 
