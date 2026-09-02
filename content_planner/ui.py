@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import calendar
+import json
 import os
 import sys
 import webbrowser
 import threading
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from tkinter import DoubleVar, IntVar, TclError, filedialog, messagebox, ttk
 
@@ -615,7 +616,7 @@ class ContentPlannerApp(ctk.CTk):
         ctk.CTkCheckBox(actions, text="Usar IA OpenAI", variable=self.clip_use_ai).pack(side="left", padx=14)
         self.clip_analyze_button = ctk.CTkButton(actions, text="BAIXAR E ENCONTRAR CORTES", command=self._start_clip_analysis, fg_color=UI["accent"])
         self.clip_analyze_button.pack(side="right")
-        ctk.CTkLabel(frame, text="Use somente vídeos para os quais você possui direito ou autorização. O áudio e a transcrição não são enviados à internet.", text_color=UI["muted"], justify="left").grid(row=2, column=0, sticky="w", pady=(0, 10))
+        ctk.CTkLabel(frame, text="Use somente vídeos para os quais você possui direito ou autorização. Com IA OpenAI marcada, somente a transcrição é enviada para análise e pode gerar custo na API.", text_color=UI["muted"], justify="left", wraplength=900).grid(row=2, column=0, sticky="w", pady=(0, 10))
         self.clip_status = ctk.CTkLabel(frame, text="Pronto para analisar.", text_color="#CBD5E1"); self.clip_status.grid(row=3, column=0, sticky="w")
         self.clip_progress = ctk.CTkProgressBar(frame); self.clip_progress.grid(row=4, column=0, sticky="ew", pady=(5, 13)); self.clip_progress.set(0)
         self.clip_table = ttk.Treeview(frame, style="Neiva.Treeview", columns=("start", "end", "score", "title"), show="headings", height=9)
@@ -682,8 +683,17 @@ class ContentPlannerApp(ctk.CTk):
             return
         for index, item in enumerate(suggestions):
             self.clip_table.insert("", "end", iid=str(index), values=(self._caption_time(item.start), self._caption_time(item.end), f"{item.score}%", item.title))
-        self.clip_progress.set(1); self.clip_status.configure(text=f"Análise concluída: {len(suggestions)} cortes sugeridos.")
+        report = self._save_clip_analysis(video, suggestions)
+        self.clip_progress.set(1); self.clip_status.configure(text=f"Análise concluída: {len(suggestions)} cortes sugeridos. Resultado salvo em {report.name}.")
         self.clip_table.selection_set("0"); self._show_clip_detail()
+
+    def _save_clip_analysis(self, video: Path, suggestions: list[ClipSuggestion]) -> Path:
+        folder = ROOT_DIR / "exports" / "analises_de_cortes"; folder.mkdir(parents=True, exist_ok=True)
+        now = datetime.now()
+        output = folder / f"{video.stem}_cortes_{now:%Y%m%d_%H%M%S}.json"
+        data = {"video": str(video), "youtube_url": self.clip_url.get().strip(), "created_at": now.isoformat(timespec="seconds"), "cuts": [{"start": item.start, "end": item.end, "title": item.title, "summary": item.summary, "score": item.score} for item in suggestions]}
+        output.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        return output
 
     def _show_clip_detail(self, event=None) -> None:
         selected = self.clip_table.selection()
@@ -908,7 +918,7 @@ class ContentPlannerApp(ctk.CTk):
         ctk.CTkButton(box, text="Salvar credenciais", command=save_settings).grid(row=3, column=1, sticky="e", padx=16, pady=16)
         ctk.CTkLabel(
             box,
-            text=f"Banco: {Path('database/content_planner.db')}\nPDFs: {Path('exports')}",
+            text=f"Banco: {Path('database/content_planner.db')}\nArquivos gerados: {Path('exports')}\nA chave OpenAI fica no cofre do Windows; nunca a envie por mensagens ou a inclua no GitHub.",
             text_color="#94A3B8",
             justify="left",
         ).grid(row=4, column=0, columnspan=2, sticky="w", padx=16, pady=(0, 16))

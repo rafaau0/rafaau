@@ -31,6 +31,15 @@ python -m pip install -r requirements.txt
 python -m content_planner
 ```
 
+## Configuração e segurança
+
+- Para **Encontrar Cortes com IA**, crie uma chave na OpenAI, configure o faturamento da conta e informe-a em **Configurações > OPENAI_API_KEY**. A chave é salva no cofre do Windows e nunca deve ser adicionada ao Git, compartilhada por mensagem ou colocada no código.
+- A transcrição é local. Quando a opção **Usar IA OpenAI** estiver ativa, somente a transcrição com timestamps é enviada à API para selecionar os cortes; esse uso pode gerar custo.
+- Instale o [FFmpeg](https://ffmpeg.org/) e deixe `ffmpeg` e `ffprobe` disponíveis no `PATH` para download/transcrição de vídeo.
+- Para o módulo de encartes, instale o Adobe Photoshop. O projeto já contém toda a automação de PSD necessária.
+
+Os vídeos baixados ficam em `exports/downloads` e os resultados das análises em `exports/analises_de_cortes` (JSON).
+
 ## Testar
 
 ```powershell
