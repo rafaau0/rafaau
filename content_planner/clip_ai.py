@@ -41,6 +41,9 @@ def analyze_cuts(subtitles: list[Subtitle], api_key: str, limit: int = 8) -> lis
     transcript = "\n".join(f"[{item.start:.2f} - {item.end:.2f}] {item.text}" for item in subtitles)
     if not transcript.strip():
         return []
+    requested_limit = max(0, int(limit))
+    if requested_limit == 0:
+        return []
     instructions = """Você é um editor especializado em cortes virais em português do Brasil.
 Analise a transcrição com timestamps e selecione os melhores trechos de 20 a 90 segundos.
 Prefira uma ideia completa, gancho forte, ensino útil, história, opinião marcante ou conclusão.
@@ -63,6 +66,19 @@ Retorne no máximo o número de cortes pedido, com título curto e atraente, res
         data = response.json()
         text = data.get("output_text") or next(part["text"] for output in data["output"] for part in output.get("content", []) if part.get("type") == "output_text")
         cuts = json.loads(text)["cuts"]
-        return [ClipSuggestion(float(item["start"]), float(item["end"]), str(item["title"]).strip(), str(item["summary"]).strip(), max(0, min(100, int(item["score"])))) for item in cuts if float(item["end"]) > float(item["start"])]
+        lower, upper = min(item.start for item in subtitles), max(item.end for item in subtitles)
+        validated: list[ClipSuggestion] = []
+        for item in sorted(cuts, key=lambda value: float(value["start"])):
+            start = max(lower, float(item["start"]))
+            end = min(upper, float(item["end"]))
+            if end <= start or not 20 <= end - start <= 90:
+                continue
+            candidate = ClipSuggestion(start, end, str(item["title"]).strip(), str(item["summary"]).strip(), max(0, min(100, int(item["score"]))))
+            if not candidate.title or any(candidate.start < saved.end and candidate.end > saved.start for saved in validated):
+                continue
+            validated.append(candidate)
+            if len(validated) >= requested_limit:
+                break
+        return validated
     except (KeyError, TypeError, ValueError, StopIteration, json.JSONDecodeError) as exc:
         raise ClipAIError("A resposta da IA não teve o formato esperado. Tente novamente.") from exc

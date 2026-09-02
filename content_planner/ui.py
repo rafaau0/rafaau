@@ -59,10 +59,11 @@ ICON_PATH = _asset_path("neiva_logo.ico")
 
 # Tokens visuais centralizados. Não participam de nenhuma regra de negócio.
 UI = {
-    "canvas": "#0A0F18", "sidebar": "#0D1521", "surface": "#121C2A",
-    "surface_alt": "#182638", "border": "#26384F", "text": "#F1F5F9",
-    "muted": "#93A4BA", "accent": "#5B8CFF", "accent_hover": "#4776E6",
-    "success": "#2CB67D", "warning": "#F5B942",
+    "canvas": "#F7F8FA", "sidebar": "#FFFFFF", "surface": "#FFFFFF",
+    "surface_alt": "#F0F2F5", "border": "#DDE1E7", "text": "#17191F",
+    "muted": "#68707D", "accent": "#FF263D", "accent_hover": "#D91E32",
+    "success": "#168A5B", "warning": "#C77A08", "error": "#C92A3D",
+    "secondary": "#E7EAF0", "secondary_hover": "#D8DDE5", "selection": "#FFF0F2",
 }
 
 
@@ -80,9 +81,11 @@ class ContentPlannerApp(ctk.CTk):
         self._navigation: list[tuple[str, object]] = []
         self.video_project: VideoProject | None = None
         self.video_busy = False
+        self.video_studio_section = "Importar"
 
-        ctk.set_appearance_mode("dark")
-        ctk.set_default_color_theme("blue")
+        ctk.set_appearance_mode("light")
+        theme_path = _asset_path("neiva_light.json")
+        ctk.set_default_color_theme(str(theme_path) if theme_path.exists() else "blue")
         self.title("Neiva Planner")
         if ICON_PATH.exists():
             self.iconbitmap(ICON_PATH)
@@ -114,9 +117,9 @@ class ContentPlannerApp(ctk.CTk):
         style.theme_use("clam")
         style.configure("Neiva.Treeview", background=UI["surface"], fieldbackground=UI["surface"],
                         foreground=UI["text"], rowheight=38, borderwidth=0, font=("Segoe UI", 10))
-        style.configure("Neiva.Treeview.Heading", background=UI["surface_alt"], foreground=UI["muted"],
+        style.configure("Neiva.Treeview.Heading", background=UI["surface_alt"], foreground=UI["text"],
                         relief="flat", font=("Segoe UI Semibold", 9), padding=(12, 10))
-        style.map("Neiva.Treeview", background=[("selected", "#294D85")])
+        style.map("Neiva.Treeview", background=[("selected", UI["selection"])], foreground=[("selected", UI["text"])])
 
     def _build_sidebar(self) -> None:
         self.sidebar = ctk.CTkFrame(self, width=244, corner_radius=0, fg_color=UI["sidebar"])
@@ -130,17 +133,13 @@ class ContentPlannerApp(ctk.CTk):
         else:
             ctk.CTkLabel(sidebar, text="NEIVA", font=ctk.CTkFont(family="Segoe UI", size=24, weight="bold")).pack(pady=(28, 2))
         ctk.CTkLabel(sidebar, text="PLANNER EDITORIAL", text_color=UI["muted"], font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold")).pack(pady=(0, 28))
-        ctk.CTkLabel(sidebar, text="NAVEGAÇÃO", text_color="#5E718A", font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold")).pack(anchor="w", padx=22, pady=(0, 7))
+        ctk.CTkLabel(sidebar, text="NAVEGAÇÃO", text_color=UI["muted"], font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold")).pack(anchor="w", padx=22, pady=(0, 7))
 
         self._navigation = [
             ("Dashboard", self.show_dashboard),
             ("Clientes", self.show_clients),
-            ("Calendário", self.show_calendar),
-            ("Exportar PDF", self.show_export),
-            ("Trello", self.show_trello),
-            ("Legendas de Vídeo", self.show_video_subtitles),
-            ("Baixar YouTube", self.show_youtube_downloader),
-            ("Encontrar Cortes", self.show_clip_finder),
+            ("Planejamento", self.show_planning),
+            ("Estúdio de Vídeo", self.show_video_studio),
             ("Encarte de Ofertas", self.show_offer_flyer),
             ("Configurações", self.show_settings),
         ]
@@ -165,7 +164,7 @@ class ContentPlannerApp(ctk.CTk):
             sidebar,
             text="Planejamento editorial,\nprodução e aprovação\nem um só lugar.",
             justify="left",
-            text_color="#71839A",
+            text_color=UI["muted"],
             font=ctk.CTkFont(family="Segoe UI", size=11),
         ).pack(side="bottom", padx=22, pady=24, anchor="w")
 
@@ -244,10 +243,10 @@ class ContentPlannerApp(ctk.CTk):
             cards.grid_columnconfigure(index, weight=1)
 
         metrics = [
-            ("Clientes", stats["clients"], "#38BDF8"),
-            ("Conteúdos", stats["posts"], "#A78BFA"),
-            ("Pendentes", stats["pending"], "#F59E0B"),
-            ("Concluídos", stats["done"], "#10B981"),
+            ("Clientes", stats["clients"], "#2563EB"),
+            ("Conteúdos", stats["posts"], "#7C3AED"),
+            ("Pendentes", stats["pending"], "#B45309"),
+            ("Concluídos", stats["done"], "#047857"),
         ]
         for col, (label, value, color) in enumerate(metrics):
             card = ctk.CTkFrame(cards, fg_color=UI["surface"], corner_radius=12, border_width=1, border_color=UI["border"])
@@ -268,7 +267,7 @@ class ContentPlannerApp(ctk.CTk):
         ctk.CTkButton(quick, text="Novo cliente", command=self._open_client_modal).grid(
             row=1, column=0, sticky="ew", padx=18, pady=(0, 18)
         )
-        ctk.CTkButton(quick, text="Abrir calendário", command=self.show_calendar).grid(
+        ctk.CTkButton(quick, text="Abrir planejamento", command=self.show_planning).grid(
             row=1, column=1, sticky="ew", padx=18, pady=(0, 18)
         )
         ctk.CTkButton(quick, text="Exportar PDF", command=self.show_export).grid(
@@ -302,11 +301,11 @@ class ContentPlannerApp(ctk.CTk):
 
         clients = self.db.search_clients(term)
         if not clients:
-            ctk.CTkLabel(parent, text="Nenhum cliente encontrado.", text_color="#94A3B8").grid(row=0, column=0, sticky="w", pady=20)
+            ctk.CTkLabel(parent, text="Nenhum cliente encontrado.", text_color=UI["muted"]).grid(row=0, column=0, sticky="w", pady=20)
             return
 
         for row, client in enumerate(clients):
-            item = ctk.CTkFrame(parent, fg_color="#111827", corner_radius=10)
+            item = ctk.CTkFrame(parent, fg_color=UI["surface"], corner_radius=10, border_width=1, border_color=UI["border"])
             item.grid(row=row, column=0, sticky="ew", pady=6)
             item.grid_columnconfigure(0, weight=1)
             ctk.CTkLabel(item, text=client.name, font=ctk.CTkFont(size=17, weight="bold")).grid(
@@ -315,34 +314,74 @@ class ContentPlannerApp(ctk.CTk):
             ctk.CTkLabel(
                 item,
                 text=f"{client.niche}  |  {client.instagram}  |  {client.posting_frequency}",
-                text_color="#94A3B8",
+                text_color=UI["muted"],
             ).grid(row=1, column=0, sticky="w", padx=16, pady=(2, 12))
-            ctk.CTkButton(item, text="Calendário", width=110, command=lambda c=client: self._select_client_calendar(c)).grid(
+            ctk.CTkButton(item, text="Planejamento", width=110, command=lambda c=client: self._select_client_calendar(c)).grid(
                 row=0, column=1, rowspan=2, padx=(0, 8), pady=12
             )
             ctk.CTkButton(
                 item,
                 text="Editar",
                 width=90,
-                fg_color="#334155",
+                fg_color=UI["secondary"],
+                hover_color=UI["secondary_hover"],
+                text_color=UI["text"],
                 command=lambda c=client: self._open_client_modal(c),
             ).grid(row=0, column=2, rowspan=2, padx=(0, 8), pady=12)
             ctk.CTkButton(
                 item,
                 text="Excluir",
                 width=90,
-                fg_color="#991B1B",
-                hover_color="#B91C1C",
+                fg_color=UI["error"],
+                hover_color="#A91F30",
                 command=lambda c=client: self._delete_client(c),
             ).grid(row=0, column=3, rowspan=2, padx=(0, 16), pady=12)
 
-    def show_calendar(self) -> None:
-        frame = self._set_active_view("Calendário", "Calendário Editorial", "Organize conteúdos por cliente, mês e status.")
+    def show_planning(self) -> None:
+        frame = self._set_active_view("Planejamento", "Planejamento Editorial", "Organize conteúdos e, no mesmo lugar, exporte o PDF ou envie ao Trello.")
         self._build_calendar_controls(frame)
         self._render_calendar_grid(frame)
+        actions = ctk.CTkFrame(frame, fg_color="transparent")
+        actions.grid(row=2, column=0, sticky="ew", pady=(14, 0))
+        ctk.CTkButton(actions, text="+ NOVO CONTEÚDO", fg_color=UI["secondary"], hover_color=UI["secondary_hover"], text_color=UI["text"], command=self._open_today_post).pack(side="left")
+        ctk.CTkButton(actions, text="EXPORTAR PDF", command=self._export_current_planning).pack(side="right", padx=(8, 0))
+        self.trello_action_button = ctk.CTkButton(actions, text="ENVIAR AO TRELLO", fg_color=UI["success"], command=self._trello_current_planning)
+        self.trello_action_button.pack(side="right")
+
+    def show_calendar(self) -> None:
+        """Compatibilidade com atalhos internos e versões anteriores."""
+        self.show_planning()
+
+    def _selected_planning_client(self) -> Client | None:
+        if self.selected_client_id is None:
+            return None
+        return self.db.get_client(self.selected_client_id)
+
+    def _open_today_post(self) -> None:
+        client = self._selected_planning_client()
+        if client is None:
+            self._show_warning("Planejamento", "Cadastre ou selecione um cliente primeiro.")
+            return
+        today = date.today()
+        day = today.day if (today.year, today.month) == (self.current_year, self.current_month) else 1
+        self._open_post_modal(f"{self.current_year:04d}-{self.current_month:02d}-{day:02d}", None)
+
+    def _export_current_planning(self) -> None:
+        client = self._selected_planning_client()
+        if client is None:
+            self._show_warning("Planejamento", "Cadastre ou selecione um cliente primeiro.")
+            return
+        self._export_pdf(client, self.current_year, self.current_month)
+
+    def _trello_current_planning(self) -> None:
+        client = self._selected_planning_client()
+        if client is None:
+            self._show_warning("Planejamento", "Cadastre ou selecione um cliente primeiro.")
+            return
+        self._send_to_trello(client, self.current_year, self.current_month)
 
     def _build_calendar_controls(self, frame: ctk.CTkFrame) -> None:
-        controls = ctk.CTkFrame(frame, fg_color="#111827", corner_radius=10)
+        controls = ctk.CTkFrame(frame, fg_color=UI["surface"], corner_radius=10, border_width=1, border_color=UI["border"])
         controls.grid(row=0, column=0, sticky="ew", pady=(0, 14))
         controls.grid_columnconfigure(1, weight=1)
 
@@ -365,18 +404,18 @@ class ContentPlannerApp(ctk.CTk):
         ctk.CTkButton(controls, text=">", width=44, command=self._next_month).grid(row=0, column=4, padx=(4, 12))
 
     def _render_calendar_grid(self, frame: ctk.CTkFrame) -> None:
-        grid = ctk.CTkFrame(frame, fg_color="#111827", corner_radius=10)
+        grid = ctk.CTkFrame(frame, fg_color=UI["surface"], corner_radius=10, border_width=1, border_color=UI["border"])
         grid.grid(row=1, column=0, sticky="nsew")
         for col in range(7):
             grid.grid_columnconfigure(col, weight=1, uniform="calendar")
 
         for col, label in enumerate(["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"]):
-            ctk.CTkLabel(grid, text=label, text_color="#CBD5E1", font=ctk.CTkFont(weight="bold")).grid(
+            ctk.CTkLabel(grid, text=label, text_color=UI["text"], font=ctk.CTkFont(weight="bold")).grid(
                 row=0, column=col, sticky="ew", padx=6, pady=(12, 8)
             )
 
         if self.selected_client_id is None:
-            ctk.CTkLabel(grid, text="Cadastre um cliente para usar o calendário.", text_color="#94A3B8").grid(
+            ctk.CTkLabel(grid, text="Cadastre um cliente para usar o calendário.", text_color=UI["muted"]).grid(
                 row=1, column=0, columnspan=7, pady=40
             )
             return
@@ -390,23 +429,23 @@ class ContentPlannerApp(ctk.CTk):
         for row_index, week in enumerate(calendar.monthcalendar(self.current_year, self.current_month), start=1):
             for col_index, day in enumerate(week):
                 if day == 0:
-                    ctk.CTkFrame(grid, height=116, fg_color="#0B1220", corner_radius=8).grid(
+                    ctk.CTkFrame(grid, height=116, fg_color=UI["surface_alt"], corner_radius=8).grid(
                         row=row_index, column=col_index, sticky="nsew", padx=6, pady=6
                     )
                     continue
 
                 day_posts = posts_by_day.get(day, [])
-                color = "#172554" if day_posts else "#1F2937"
+                color = UI["selection"] if day_posts else UI["surface_alt"]
                 cell = ctk.CTkFrame(grid, height=116, fg_color=color, corner_radius=8)
                 cell.grid(row=row_index, column=col_index, sticky="nsew", padx=6, pady=6)
                 cell.grid_propagate(False)
                 ctk.CTkLabel(cell, text=str(day), font=ctk.CTkFont(size=16, weight="bold")).pack(anchor="nw", padx=10, pady=(8, 2))
                 for post in day_posts[:3]:
-                    ctk.CTkLabel(cell, text=f"{post.content_type} · {post.status}", text_color="#BFDBFE", anchor="w").pack(
+                    ctk.CTkLabel(cell, text=f"{post.content_type} · {post.status}", text_color="#9F1D2C", anchor="w").pack(
                         fill="x", padx=10
                     )
                 if len(day_posts) > 3:
-                    ctk.CTkLabel(cell, text=f"+{len(day_posts) - 3} conteúdos", text_color="#93C5FD").pack(anchor="w", padx=10)
+                    ctk.CTkLabel(cell, text=f"+{len(day_posts) - 3} conteúdos", text_color=UI["accent_hover"]).pack(anchor="w", padx=10)
                 ctk.CTkButton(
                     cell,
                     text="Abrir",
@@ -415,15 +454,57 @@ class ContentPlannerApp(ctk.CTk):
                 ).pack(side="bottom", fill="x", padx=8, pady=8)
 
     def show_export(self) -> None:
-        frame = self._set_active_view("Exportar PDF", "Exportar PDF", "Gere um calendário editorial profissional em PDF.")
-        self._month_action_panel(frame, "Exportar PDF", self._export_pdf)
+        self.show_planning()
 
     def show_trello(self) -> None:
-        frame = self._set_active_view("Trello", "Trello", "Crie listas e cards automaticamente no quadro configurado.")
-        self._month_action_panel(frame, "Enviar para Trello", self._send_to_trello)
+        self.show_planning()
+
+    def show_video_studio(self) -> None:
+        handlers = {
+            "Importar": self.show_youtube_downloader,
+            "Legendas": self.show_video_subtitles,
+            "Cortes": self.show_clip_finder,
+        }
+        handlers.get(self.video_studio_section, self.show_youtube_downloader)()
+
+    def _video_studio_frame(self, section: str, subtitle: str) -> ctk.CTkFrame:
+        self.video_studio_section = section
+        outer = self._set_active_view("Estúdio de Vídeo", "Estúdio de Vídeo", subtitle)
+        tabs = ctk.CTkFrame(outer, fg_color=UI["surface"], corner_radius=10)
+        tabs.grid(row=0, column=0, sticky="ew", pady=(0, 14))
+        for label, handler in (("Importar", self.show_youtube_downloader), ("Legendas", self.show_video_subtitles), ("Cortes", self.show_clip_finder)):
+            selected = label == section
+            ctk.CTkButton(
+                tabs, text=label.upper(), width=120, command=handler,
+                fg_color=UI["accent"] if selected else UI["surface_alt"],
+                hover_color=UI["accent_hover"] if selected else UI["secondary_hover"],
+                text_color="#FFFFFF" if selected else UI["text"],
+                border_width=1,
+                border_color=UI["accent"] if selected else UI["border"],
+            ).pack(side="left", padx=6, pady=8)
+        current = self.video_project.video_path.name if self.video_project else "Nenhum vídeo carregado"
+        ctk.CTkLabel(tabs, text=f"Vídeo atual: {current}", text_color=UI["muted"]).pack(side="right", padx=12)
+        ctk.CTkButton(tabs, text="ARQUIVO LOCAL", width=120, fg_color=UI["secondary"], hover_color=UI["secondary_hover"], text_color=UI["text"], command=self._import_local_video).pack(side="right", padx=6, pady=8)
+        body = ctk.CTkFrame(outer, fg_color="transparent")
+        body.grid(row=1, column=0, sticky="nsew")
+        body.grid_columnconfigure(0, weight=1)
+        return body
+
+    def _import_local_video(self) -> None:
+        filename = filedialog.askopenfilename(title="Selecionar vídeo", filetypes=(("Vídeos", "*.mp4 *.mov *.mkv *.avi *.webm"), ("Todos", "*.*")))
+        if not filename:
+            return
+        try:
+            path = Path(filename)
+            probe(path)
+            self.video_project = VideoProject(path)
+        except Exception as exc:
+            self._show_error("Vídeo inválido", str(exc))
+            return
+        self.show_video_subtitles()
 
     def show_video_subtitles(self) -> None:
-        frame = self._set_active_view("Legendas de Vídeo", "Legendas de Vídeo", "Transcreva, revise e exporte vídeos curtos sem sair do Neiva Planner.")
+        frame = self._video_studio_frame("Legendas", "Transcreva, revise, remova silêncios e exporte o vídeo atual.")
         self.video_model = ctk.StringVar(value="base")
         self.video_format = ctk.StringVar(value="Original")
         self.video_fit = ctk.StringVar(value="Preencher")
@@ -445,78 +526,82 @@ class ContentPlannerApp(ctk.CTk):
         self.motion_smoothing_enabled = ctk.BooleanVar(value=True)
         self.caption_fixed = ctk.BooleanVar(value=True)
         source = ctk.CTkFrame(frame, fg_color=UI["surface"], corner_radius=12, border_width=1, border_color=UI["border"]); source.grid(row=0, column=0, sticky="ew", pady=(0, 12)); source.grid_columnconfigure(0, weight=1)
-        self.video_info = ctk.CTkLabel(source, text="Selecione um vídeo para iniciar a transcrição local.", text_color="#CBD5E1", justify="left")
+        self.video_info = ctk.CTkLabel(source, text="Selecione um vídeo para iniciar a transcrição local.", text_color=UI["text"], justify="left")
         self.video_info.grid(row=0, column=0, padx=18, pady=16, sticky="w")
         ctk.CTkButton(source, text="Selecionar vídeo", command=self._select_video).grid(row=0, column=1, padx=18, pady=16)
         settings = ctk.CTkFrame(frame, fg_color=UI["surface"], corner_radius=12, border_width=1, border_color=UI["border"]); settings.grid(row=1, column=0, sticky="ew", pady=(0, 12))
         for col, (label, variable, values) in enumerate((("Modelo", self.video_model, ["tiny", "base", "small", "medium"]), ("Formato", self.video_format, ["Original", "Vertical 9:16", "Quadrado", "Horizontal"]), ("Enquadramento", self.video_fit, ["Preencher", "Ajustar"]))):
-            settings.grid_columnconfigure(col, weight=1); ctk.CTkLabel(settings, text=label, text_color="#CBD5E1").grid(row=0, column=col, padx=15, pady=(12, 3), sticky="w"); ctk.CTkOptionMenu(settings, variable=variable, values=values).grid(row=1, column=col, padx=15, pady=(0, 12), sticky="ew")
+            settings.grid_columnconfigure(col, weight=1); ctk.CTkLabel(settings, text=label, text_color=UI["text"]).grid(row=0, column=col, padx=15, pady=(12, 3), sticky="w"); ctk.CTkOptionMenu(settings, variable=variable, values=values).grid(row=1, column=col, padx=15, pady=(0, 12), sticky="ew")
         for col, (label, variable, values) in enumerate((("Fonte", self.caption_font, ["Arial", "Impact", "Verdana", "Tahoma"]), ("Estilo", self.caption_style, ["Viral", "Clean", "Impacto"]), ("Posição", self.caption_position, ["Superior", "Centro", "Inferior"]))):
-            ctk.CTkLabel(settings, text=label, text_color="#CBD5E1").grid(row=2, column=col, padx=15, pady=(0, 3), sticky="w"); ctk.CTkOptionMenu(settings, variable=variable, values=values).grid(row=3, column=col, padx=15, pady=(0, 12), sticky="ew")
-        ctk.CTkLabel(settings, text="Tamanho", text_color="#CBD5E1").grid(row=2, column=3, padx=15, pady=(0, 3), sticky="w")
-        self.caption_size_label = ctk.CTkLabel(settings, text="42", text_color="#FACC15")
+            ctk.CTkLabel(settings, text=label, text_color=UI["text"]).grid(row=2, column=col, padx=15, pady=(0, 3), sticky="w"); ctk.CTkOptionMenu(settings, variable=variable, values=values).grid(row=3, column=col, padx=15, pady=(0, 12), sticky="ew")
+        ctk.CTkLabel(settings, text="Tamanho", text_color=UI["text"]).grid(row=2, column=3, padx=15, pady=(0, 3), sticky="w")
+        self.caption_size_label = ctk.CTkLabel(settings, text="42", text_color=UI["warning"])
         self.caption_size_label.grid(row=2, column=3, padx=(0,15), pady=(0,3), sticky="e")
         ctk.CTkSlider(settings, from_=0, to=72, number_of_steps=72, variable=self.caption_size, command=lambda value: self.caption_size_label.configure(text=str(round(value)))).grid(row=3, column=3, padx=15, pady=(0,12), sticky="ew")
         ctk.CTkCheckBox(settings, text="Incluir legendas no vídeo exportado", variable=self.export_with_captions).grid(row=4, column=0, columnspan=2, padx=15, pady=(0,12), sticky="w")
         effects = ctk.CTkFrame(frame,fg_color=UI["surface"],corner_radius=12,border_width=1,border_color=UI["border"]); effects.grid(row=7,column=0,sticky="ew",pady=(16,0));
         ctk.CTkLabel(effects,text="EDIÇÃO DINÂMICA DO VÍDEO",font=ctk.CTkFont(weight="bold")).grid(row=0,column=0,columnspan=4,sticky="w",padx=14,pady=(12,4))
         for col,(label,var,values) in enumerate((("Preset",self.effect_preset,["Viral","Clean","Impacto","Meme"]),("Animação",self.effect_animation,["Auto Mix","Pop","Bounce","Fade","Scale","Slide","Word Highlight","Typewriter"]),("Qualidade",self.export_quality,["Alta","Média","Baixa"]))):
-            effects.grid_columnconfigure(col,weight=1); ctk.CTkLabel(effects,text=label,text_color="#CBD5E1").grid(row=1,column=col,padx=14,sticky="w"); ctk.CTkOptionMenu(effects,variable=var,values=values).grid(row=2,column=col,padx=14,pady=(2,10),sticky="ew")
-        ctk.CTkLabel(effects,text="Palavras-chave (separe por vírgula)",text_color="#CBD5E1").grid(row=3,column=0,columnspan=2,padx=14,sticky="w")
+            effects.grid_columnconfigure(col,weight=1); ctk.CTkLabel(effects,text=label,text_color=UI["text"]).grid(row=1,column=col,padx=14,sticky="w"); ctk.CTkOptionMenu(effects,variable=var,values=values).grid(row=2,column=col,padx=14,pady=(2,10),sticky="ew")
+        ctk.CTkLabel(effects,text="Palavras-chave (separe por vírgula)",text_color=UI["text"]).grid(row=3,column=0,columnspan=2,padx=14,sticky="w")
         ctk.CTkEntry(effects,textvariable=self.effect_keywords,placeholder_text="CARA, INSANO").grid(row=4,column=0,columnspan=3,padx=14,pady=(2,12),sticky="ew")
         ctk.CTkCheckBox(effects,text="Ativar edição dinâmica",variable=self.dynamic_edit_enabled).grid(row=5,column=0,padx=14,pady=(0,8),sticky="w")
         ctk.CTkCheckBox(effects,text="Manter legenda fixa",variable=self.caption_fixed).grid(row=5,column=1,padx=14,pady=(0,8),sticky="w")
         ctk.CTkButton(effects,text="APLICAR EDIÇÃO DINÂMICA",command=self._apply_dynamic_edit).grid(row=5,column=2,columnspan=2,padx=14,pady=(0,8),sticky="e")
         ctk.CTkCheckBox(effects,text="Zoom gradual",variable=self.dynamic_zoom_enabled).grid(row=6,column=0,padx=14,pady=(0,8),sticky="w")
         ctk.CTkLabel(effects,text="Zoom máximo").grid(row=6,column=1,padx=14,sticky="e")
-        self.zoom_amount_label=ctk.CTkLabel(effects,text="8%",text_color="#FACC15"); self.zoom_amount_label.grid(row=6,column=2,padx=4,sticky="w")
+        self.zoom_amount_label=ctk.CTkLabel(effects,text="8%",text_color=UI["warning"]); self.zoom_amount_label.grid(row=6,column=2,padx=4,sticky="w")
         ctk.CTkSlider(effects,from_=1,to=15,number_of_steps=14,variable=self.dynamic_zoom_amount,command=lambda value:self.zoom_amount_label.configure(text=f"{round(value)}%")).grid(row=6,column=3,padx=14,pady=(0,8),sticky="ew")
         ctk.CTkCheckBox(effects,text="Movimento do vídeo",variable=self.video_motion_enabled).grid(row=7,column=0,padx=14,sticky="w")
         ctk.CTkOptionMenu(effects,variable=self.video_motion,values=["Auto Mix","Zoom In","Zoom Out","Pan Esquerda","Pan Direita","Vertical"]).grid(row=7,column=1,columnspan=2,padx=14,pady=(0,8),sticky="ew")
         ctk.CTkCheckBox(effects,text="Suavizar movimentos (48 FPS)",variable=self.motion_smoothing_enabled).grid(row=8,column=0,columnspan=2,padx=14,pady=(0,8),sticky="w")
         ctk.CTkLabel(effects,text="Velocidade").grid(row=8,column=2,padx=(0,4),sticky="e")
-        self.effect_speed_label=ctk.CTkLabel(effects,text="1,0x",text_color="#FACC15"); self.effect_speed_label.grid(row=8,column=3,padx=(0,14),sticky="e")
+        self.effect_speed_label=ctk.CTkLabel(effects,text="1,0x",text_color=UI["warning"]); self.effect_speed_label.grid(row=8,column=3,padx=(0,14),sticky="e")
         ctk.CTkSlider(effects,from_=0.5,to=2.0,number_of_steps=15,variable=self.effect_speed,command=lambda value:self.effect_speed_label.configure(text=f"{value:.1f}x".replace(".",","))).grid(row=9,column=0,columnspan=4,padx=14,pady=(0,8),sticky="ew")
-        self.effects_timeline=ctk.CTkLabel(effects,text="Timeline de vídeo: será atualizada ao gerar legendas.",text_color="#94A3B8"); self.effects_timeline.grid(row=10,column=0,columnspan=4,padx=14,pady=(0,12),sticky="w")
+        self.effects_timeline=ctk.CTkLabel(effects,text="Timeline de vídeo: será atualizada ao gerar legendas.",text_color=UI["muted"]); self.effects_timeline.grid(row=10,column=0,columnspan=4,padx=14,pady=(0,12),sticky="w")
         bar = ctk.CTkFrame(frame, fg_color="transparent"); bar.grid(row=2, column=0, sticky="ew", pady=(0, 10))
         self.video_generate_button = ctk.CTkButton(bar, text="Gerar legendas", command=self._generate_video_subtitles)
         self.video_generate_button.pack(side="left", padx=(0, 8))
-        ctk.CTkButton(bar, text="Exportar SRT / VTT", fg_color="#334155", command=self._export_video_captions).pack(side="left")
-        ctk.CTkButton(bar, text="EXPORTAR VÍDEO", fg_color="#EA580C", hover_color="#C2410C", command=self._export_subtitled_video).pack(side="right")
+        ctk.CTkButton(bar, text="Exportar SRT / VTT", fg_color=UI["secondary"], hover_color=UI["secondary_hover"], text_color=UI["text"], command=self._export_video_captions).pack(side="left")
+        ctk.CTkButton(bar, text="EXPORTAR VÍDEO", command=self._export_subtitled_video).pack(side="right")
         self.video_table = ttk.Treeview(frame, style="Neiva.Treeview", columns=("start", "end", "text"), show="headings", height=14)
         for key, label, width in (("start", "Início", 100), ("end", "Fim", 100), ("text", "Texto — duplo clique para editar", 700)):
             self.video_table.heading(key, text=label); self.video_table.column(key, width=width, anchor="w")
         self.video_table.grid(row=3, column=0, sticky="ew"); self.video_table.bind("<Double-1>", self._edit_video_subtitle)
-        self.video_status = ctk.CTkLabel(frame, text="Modelos maiores oferecem maior precisão e consomem mais RAM/CPU.", text_color="#94A3B8"); self.video_status.grid(row=4, column=0, sticky="w", pady=(12, 2))
+        self.video_status = ctk.CTkLabel(frame, text="Modelos maiores oferecem maior precisão e consomem mais RAM/CPU.", text_color=UI["muted"]); self.video_status.grid(row=4, column=0, sticky="w", pady=(12, 2))
         self.video_progress = ctk.CTkProgressBar(frame); self.video_progress.grid(row=5, column=0, sticky="ew"); self.video_progress.set(0)
         edit = ctk.CTkFrame(frame, fg_color=UI["surface"], corner_radius=12, border_width=1, border_color=UI["border"]); edit.grid(row=6,column=0,sticky="ew",pady=(16,0)); edit.grid_columnconfigure(4,weight=1)
         ctk.CTkLabel(edit,text="EDIÇÃO AUTOMÁTICA",font=ctk.CTkFont(weight="bold")).grid(row=0,column=0,columnspan=5,sticky="w",padx=14,pady=(12,5))
         self.silence_mode=ctk.StringVar(value="Desativado"); self.silence_duration=ctk.StringVar(value="0.4"); self.silence_margin=ctk.StringVar(value="0.15"); self.silence_threshold=ctk.StringVar(value="-35")
         for col,label,var,values in ((0,"Modo",self.silence_mode,["Desativado","Reduzir silêncios","Remover silêncios"]),(1,"Duração mín.",self.silence_duration,None),(2,"Margem",self.silence_margin,None),(3,"Volume dB",self.silence_threshold,None)):
-            ctk.CTkLabel(edit,text=label,text_color="#CBD5E1").grid(row=1,column=col,sticky="w",padx=14)
+            ctk.CTkLabel(edit,text=label,text_color=UI["text"]).grid(row=1,column=col,sticky="w",padx=14)
             (ctk.CTkOptionMenu(edit,variable=var,values=values) if values else ctk.CTkEntry(edit,textvariable=var,width=80)).grid(row=2,column=col,padx=14,pady=(2,12),sticky="ew")
         ctk.CTkButton(edit,text="ANALISAR",command=self._analyze_silences).grid(row=2,column=4,padx=14,pady=(2,12),sticky="e")
-        self.silence_summary=ctk.CTkLabel(edit,text="Silêncios encontrados: —",text_color="#94A3B8"); self.silence_summary.grid(row=3,column=0,columnspan=4,sticky="w",padx=14,pady=(0,12))
+        self.silence_summary=ctk.CTkLabel(edit,text="Silêncios encontrados: —",text_color=UI["muted"]); self.silence_summary.grid(row=3,column=0,columnspan=4,sticky="w",padx=14,pady=(0,12))
         self.silence_apply=ctk.CTkButton(edit,text="APLICAR",state="disabled",command=self._apply_silence_edits); self.silence_apply.grid(row=3,column=4,padx=14,pady=(0,12),sticky="e")
+        if self.video_project:
+            self.video_info.configure(text=f"{self.video_project.video_path.name}\nVídeo carregado no Estúdio.")
+            if self.video_project.subtitles:
+                self._refresh_video_table()
 
     def show_offer_flyer(self) -> None:
         frame = self._set_active_view("Encarte de Ofertas", "Encarte de Ofertas", "Preencha modelos PSD com produtos, preços e fotos. Requer Adobe Photoshop instalado.")
         self.encarte_psd = ctk.StringVar(); self.encarte_sheet = ctk.StringVar(); self.encarte_photos = ctk.StringVar(); self.encarte_output = ctk.StringVar(value=str(ROOT_DIR / "exports" / "encartes")); self.encarte_period = ctk.StringVar()
         fields = (("Modelo PSD", self.encarte_psd, self._pick_encarte_psd), ("Planilha de produtos", self.encarte_sheet, self._pick_encarte_sheet), ("Pasta de fotos", self.encarte_photos, self._pick_encarte_photos), ("Pasta de saída", self.encarte_output, self._pick_encarte_output))
         for row, (label, variable, command) in enumerate(fields):
-            ctk.CTkLabel(frame, text=label, text_color="#CBD5E1").grid(row=row * 2, column=0, sticky="w", pady=(5, 2))
+            ctk.CTkLabel(frame, text=label, text_color=UI["text"]).grid(row=row * 2, column=0, sticky="w", pady=(5, 2))
             line = ctk.CTkFrame(frame, fg_color="transparent"); line.grid(row=row * 2 + 1, column=0, sticky="ew", pady=(0, 7)); line.grid_columnconfigure(0, weight=1)
             ctk.CTkEntry(line, textvariable=variable, height=36).grid(row=0, column=0, sticky="ew", padx=(0, 8))
-            ctk.CTkButton(line, text="Selecionar", width=105, fg_color="#334155", command=command).grid(row=0, column=1)
-        ctk.CTkLabel(frame, text="Período da oferta", text_color="#CBD5E1").grid(row=8, column=0, sticky="w", pady=(5, 2))
+            ctk.CTkButton(line, text="Selecionar", width=105, fg_color=UI["secondary"], hover_color=UI["secondary_hover"], text_color=UI["text"], command=command).grid(row=0, column=1)
+        ctk.CTkLabel(frame, text="Período da oferta", text_color=UI["text"]).grid(row=8, column=0, sticky="w", pady=(5, 2))
         ctk.CTkEntry(frame, textvariable=self.encarte_period, placeholder_text="Ex.: 03 A 06/08/2026", height=36).grid(row=9, column=0, sticky="ew", pady=(0, 9))
         bar = ctk.CTkFrame(frame, fg_color="transparent"); bar.grid(row=10, column=0, sticky="ew", pady=(2, 9))
         self.encarte_validate_button = ctk.CTkButton(bar, text="VALIDAR PRODUTOS", command=self._validate_encarte)
         self.encarte_validate_button.pack(side="left")
-        self.encarte_extract_button = ctk.CTkButton(bar, text="EXTRAIR FOTOS DO PSD", fg_color="#B36B00", command=self._extract_encarte_photos)
+        self.encarte_extract_button = ctk.CTkButton(bar, text="EXTRAIR FOTOS DO PSD", fg_color=UI["warning"], command=self._extract_encarte_photos)
         self.encarte_extract_button.pack(side="left", padx=8)
-        ctk.CTkButton(bar, text="EXPORTAR JPG / PDF", fg_color="#334155", command=self._export_encarte_files).pack(side="left")
-        self.encarte_generate_button = ctk.CTkButton(bar, text="GERAR ENCARTE", fg_color="#1F8B4C", command=self._generate_encarte)
+        ctk.CTkButton(bar, text="EXPORTAR JPG / PDF", fg_color=UI["secondary"], hover_color=UI["secondary_hover"], text_color=UI["text"], command=self._export_encarte_files).pack(side="left")
+        self.encarte_generate_button = ctk.CTkButton(bar, text="GERAR ENCARTE", fg_color=UI["success"], command=self._generate_encarte)
         self.encarte_generate_button.pack(side="right")
         self.encarte_status = ctk.CTkLabel(frame, text="Selecione os arquivos para iniciar.", text_color=UI["muted"]); self.encarte_status.grid(row=11, column=0, sticky="w")
         self.encarte_progress = ctk.CTkProgressBar(frame); self.encarte_progress.grid(row=12, column=0, sticky="ew", pady=(4, 10)); self.encarte_progress.set(0)
@@ -553,7 +638,7 @@ class ContentPlannerApp(ctk.CTk):
             try:
                 products, report = prepare_encarte(*paths)
                 self.after(0, lambda: self._display_encarte_validation(products, report))
-            except Exception as exc: self.after(0, lambda: self._show_error("Validação do encarte", str(exc)))
+            except Exception as exc: self.after(0, lambda message=str(exc): self._show_error("Validação do encarte", message))
             finally: self.after(0, lambda: self.encarte_validate_button.configure(state="normal"))
         threading.Thread(target=task, daemon=True).start()
 
@@ -576,7 +661,7 @@ class ContentPlannerApp(ctk.CTk):
             try:
                 result = generate_encarte(psd, self.encarte_products, self.encarte_period.get(), output, self._encarte_progress_update)
                 self.after(0, lambda: self._show_info("Encarte concluído", f"PSD criado em:\n{result}"))
-            except Exception as exc: self.after(0, lambda: self._show_error("Erro ao gerar encarte", str(exc)))
+            except Exception as exc: self.after(0, lambda message=str(exc): self._show_error("Erro ao gerar encarte", message))
             finally: self.after(0, lambda: self.encarte_generate_button.configure(state="normal"))
         threading.Thread(target=task, daemon=True).start()
 
@@ -588,7 +673,7 @@ class ContentPlannerApp(ctk.CTk):
             try:
                 exported = extract_photos(Path(psd), Path(photos), self._encarte_progress_update)
                 self.after(0, lambda: self._show_info("Fotos extraídas", f"{len(exported)} fotos salvas em:\n{photos}"))
-            except Exception as exc: self.after(0, lambda: self._show_error("Extrair fotos", str(exc)))
+            except Exception as exc: self.after(0, lambda message=str(exc): self._show_error("Extrair fotos", message))
             finally: self.after(0, lambda: self.encarte_extract_button.configure(state="normal"))
         threading.Thread(target=task, daemon=True).start()
 
@@ -600,24 +685,24 @@ class ContentPlannerApp(ctk.CTk):
             try:
                 jpg, pdf = export_encarte_files(Path(filename))
                 self.after(0, lambda: self._show_info("Exportação concluída", f"JPG:\n{jpg}\n\nPDF:\n{pdf}"))
-            except Exception as exc: self.after(0, lambda: self._show_error("Exportar encarte", str(exc)))
+            except Exception as exc: self.after(0, lambda message=str(exc): self._show_error("Exportar encarte", message))
         threading.Thread(target=task, daemon=True).start()
 
     def show_clip_finder(self) -> None:
-        frame = self._set_active_view("Encontrar Cortes", "Encontrar Cortes com IA local", "Cole um link: o áudio é transcrito neste computador e os trechos com melhor potencial são sugeridos.")
-        self.clip_url = ctk.CTkEntry(frame, placeholder_text="Cole o link do YouTube", height=42)
+        frame = self._video_studio_frame("Cortes", "Encontre os trechos com melhor potencial no vídeo atual ou em um link do YouTube.")
+        self.clip_url = ctk.CTkEntry(frame, placeholder_text="Link do YouTube (opcional se já houver um vídeo carregado)", height=42)
         self.clip_url.grid(row=0, column=0, sticky="ew", pady=(0, 9))
         actions = ctk.CTkFrame(frame, fg_color="transparent"); actions.grid(row=1, column=0, sticky="ew", pady=(0, 10))
-        ctk.CTkButton(actions, text="Colar", width=90, fg_color="#334155", command=self._paste_clip_url).pack(side="left")
+        ctk.CTkButton(actions, text="Colar", width=90, fg_color=UI["secondary"], hover_color=UI["secondary_hover"], text_color=UI["text"], command=self._paste_clip_url).pack(side="left")
         self.clip_model = ctk.StringVar(value="base")
         self.clip_use_ai = ctk.BooleanVar(value=bool(get_secret("OPENAI_API_KEY")))
         ctk.CTkLabel(actions, text="Modelo de transcrição", text_color=UI["muted"]).pack(side="left", padx=(18, 7))
         ctk.CTkOptionMenu(actions, variable=self.clip_model, values=["tiny", "base", "small", "medium"], width=120).pack(side="left")
         ctk.CTkCheckBox(actions, text="Usar IA OpenAI", variable=self.clip_use_ai).pack(side="left", padx=14)
-        self.clip_analyze_button = ctk.CTkButton(actions, text="BAIXAR E ENCONTRAR CORTES", command=self._start_clip_analysis, fg_color=UI["accent"])
+        self.clip_analyze_button = ctk.CTkButton(actions, text="ENCONTRAR CORTES", command=self._start_clip_analysis, fg_color=UI["accent"])
         self.clip_analyze_button.pack(side="right")
         ctk.CTkLabel(frame, text="Use somente vídeos para os quais você possui direito ou autorização. Com IA OpenAI marcada, somente a transcrição é enviada para análise e pode gerar custo na API.", text_color=UI["muted"], justify="left", wraplength=900).grid(row=2, column=0, sticky="w", pady=(0, 10))
-        self.clip_status = ctk.CTkLabel(frame, text="Pronto para analisar.", text_color="#CBD5E1"); self.clip_status.grid(row=3, column=0, sticky="w")
+        self.clip_status = ctk.CTkLabel(frame, text="Pronto para analisar.", text_color=UI["text"]); self.clip_status.grid(row=3, column=0, sticky="w")
         self.clip_progress = ctk.CTkProgressBar(frame); self.clip_progress.grid(row=4, column=0, sticky="ew", pady=(5, 13)); self.clip_progress.set(0)
         self.clip_table = ttk.Treeview(frame, style="Neiva.Treeview", columns=("start", "end", "score", "title"), show="headings", height=9)
         for key, label, width in (("start", "Início", 85), ("end", "Fim", 85), ("score", "Potencial", 90), ("title", "Assunto / gancho sugerido", 680)):
@@ -625,9 +710,9 @@ class ContentPlannerApp(ctk.CTk):
         self.clip_table.grid(row=5, column=0, sticky="ew")
         self.clip_table.bind("<<TreeviewSelect>>", self._show_clip_detail)
         detail = ctk.CTkFrame(frame, fg_color=UI["surface"], corner_radius=10, border_width=1, border_color=UI["border"]); detail.grid(row=6, column=0, sticky="ew", pady=(12, 0)); detail.grid_columnconfigure(0, weight=1)
-        self.clip_detail = ctk.CTkLabel(detail, text="Os detalhes do corte selecionado aparecerão aqui.", wraplength=900, justify="left", anchor="w", text_color="#CBD5E1")
+        self.clip_detail = ctk.CTkLabel(detail, text="Os detalhes do corte selecionado aparecerão aqui.", wraplength=900, justify="left", anchor="w", text_color=UI["text"])
         self.clip_detail.grid(row=0, column=0, padx=14, pady=13, sticky="ew")
-        ctk.CTkButton(detail, text="Copiar corte", width=110, fg_color="#334155", command=self._copy_selected_clip).grid(row=0, column=1, padx=14, pady=13)
+        ctk.CTkButton(detail, text="Copiar corte", width=110, fg_color=UI["secondary"], hover_color=UI["secondary_hover"], text_color=UI["text"], command=self._copy_selected_clip).grid(row=0, column=1, padx=14, pady=13)
         self.clip_suggestions: list[ClipSuggestion] = []
 
     def _paste_clip_url(self) -> None:
@@ -641,8 +726,10 @@ class ContentPlannerApp(ctk.CTk):
 
     def _start_clip_analysis(self) -> None:
         url = self.clip_url.get().strip()
-        if not is_youtube_url(url):
-            self._show_warning("Link inválido", "Insira um link válido do YouTube."); return
+        if url and not is_youtube_url(url):
+            self._show_warning("Link inválido", "Insira um link válido do YouTube ou deixe vazio para usar o vídeo atual."); return
+        if not url and not self.video_project:
+            self._show_warning("Encontrar Cortes", "Carregue um vídeo no Estúdio ou informe um link do YouTube."); return
         model_name = self.clip_model.get()
         use_ai = self.clip_use_ai.get()
         api_key = get_secret("OPENAI_API_KEY") if use_ai else ""
@@ -659,23 +746,28 @@ class ContentPlannerApp(ctk.CTk):
             self._clip_progress_update(text, 20 + int(value * .70))
         def task() -> None:
             try:
-                folder = ROOT_DIR / "exports" / "downloads"
-                video = download_youtube(url, folder, download_progress)
-                subtitles = transcribe(video, model_name, 40, transcription_progress)
+                if url:
+                    folder = ROOT_DIR / "exports" / "downloads"
+                    video = download_youtube(url, folder, download_progress)
+                    subtitles = transcribe(video, model_name, 40, transcription_progress)
+                else:
+                    video = self.video_project.video_path
+                    subtitles = self.video_project.subtitles or transcribe(video, model_name, 40, transcription_progress)
                 if use_ai:
                     self._clip_progress_update("IA analisando contexto e sugerindo cortes…", 94)
                     suggestions = analyze_cuts(subtitles, api_key)
                 else:
                     self._clip_progress_update("Selecionando trechos promissores…", 94)
                     suggestions = find_suggestions(subtitles)
-                self.after(0, lambda: self._display_clip_suggestions(suggestions, video))
+                self.after(0, lambda: self._display_clip_suggestions(suggestions, video, subtitles))
             except Exception as exc:
-                self.after(0, lambda: (self.clip_status.configure(text="Falha na análise."), self.clip_progress.set(0), self._show_error("Encontrar Cortes", str(exc))))
+                self.after(0, lambda message=str(exc): (self.clip_status.configure(text="Falha na análise."), self.clip_progress.set(0), self._show_error("Encontrar Cortes", message)))
             finally:
                 self.after(0, lambda: self.clip_analyze_button.configure(state="normal"))
         threading.Thread(target=task, daemon=True).start()
 
-    def _display_clip_suggestions(self, suggestions: list[ClipSuggestion], video: Path) -> None:
+    def _display_clip_suggestions(self, suggestions: list[ClipSuggestion], video: Path, subtitles: list | None = None) -> None:
+        self.video_project = VideoProject(video, subtitles=list(subtitles or []))
         self.clip_suggestions = suggestions
         if not suggestions:
             self.clip_status.configure(text="Nenhum trecho longo o bastante foi encontrado. Tente um vídeo com mais fala contínua.")
@@ -710,20 +802,20 @@ class ContentPlannerApp(ctk.CTk):
         self.clipboard_clear(); self.clipboard_append(value); self.clip_status.configure(text="Corte copiado para a área de transferência.")
 
     def show_youtube_downloader(self) -> None:
-        frame = self._set_active_view("Baixar YouTube", "Baixar vídeo do YouTube", "Baixe somente vídeos para os quais você possui direito ou autorização.")
+        frame = self._video_studio_frame("Importar", "Importe um arquivo local ou baixe um vídeo autorizado do YouTube.")
         self.youtube_url = ctk.CTkEntry(frame, placeholder_text="Cole o link do YouTube", height=42); self.youtube_url.grid(row=0, column=0, sticky="ew", pady=(0, 10))
         actions = ctk.CTkFrame(frame, fg_color="transparent"); actions.grid(row=1, column=0, sticky="ew", pady=(0, 12))
         ctk.CTkButton(actions, text="Carregar informações", command=self._load_youtube_info).pack(side="left")
-        ctk.CTkButton(actions, text="Colar", width=90, fg_color="#334155", command=self._paste_youtube_url).pack(side="left", padx=8)
-        box = ctk.CTkFrame(frame, fg_color="#111827", corner_radius=10); box.grid(row=2, column=0, sticky="ew", pady=(0, 12)); box.grid_columnconfigure(0, weight=1)
-        self.youtube_info = ctk.CTkLabel(box, text="Cole um link e carregue as informações do vídeo.", justify="left", anchor="w", text_color="#CBD5E1"); self.youtube_info.grid(row=0, column=0, padx=18, pady=18, sticky="ew")
-        ctk.CTkLabel(frame, text="Pasta de destino", text_color="#CBD5E1").grid(row=3, column=0, sticky="w")
+        ctk.CTkButton(actions, text="Colar", width=90, fg_color=UI["secondary"], hover_color=UI["secondary_hover"], text_color=UI["text"], command=self._paste_youtube_url).pack(side="left", padx=8)
+        box = ctk.CTkFrame(frame, fg_color=UI["surface"], corner_radius=10, border_width=1, border_color=UI["border"]); box.grid(row=2, column=0, sticky="ew", pady=(0, 12)); box.grid_columnconfigure(0, weight=1)
+        self.youtube_info = ctk.CTkLabel(box, text="Cole um link e carregue as informações do vídeo.", justify="left", anchor="w", text_color=UI["text"]); self.youtube_info.grid(row=0, column=0, padx=18, pady=18, sticky="ew")
+        ctk.CTkLabel(frame, text="Pasta de destino", text_color=UI["text"]).grid(row=3, column=0, sticky="w")
         folder = ctk.CTkFrame(frame, fg_color="transparent"); folder.grid(row=4, column=0, sticky="ew", pady=(4, 16)); folder.grid_columnconfigure(0, weight=1)
         self.youtube_folder = ctk.CTkEntry(folder, height=40); self.youtube_folder.insert(0, str(ROOT_DIR / "exports" / "downloads")); self.youtube_folder.grid(row=0, column=0, sticky="ew", padx=(0, 10))
         ctk.CTkButton(folder, text="Escolher pasta", command=self._choose_youtube_folder).grid(row=0, column=1)
-        self.youtube_status = ctk.CTkLabel(frame, text="Pronto para baixar.", text_color="#94A3B8"); self.youtube_status.grid(row=5, column=0, sticky="w")
+        self.youtube_status = ctk.CTkLabel(frame, text="Pronto para baixar.", text_color=UI["muted"]); self.youtube_status.grid(row=5, column=0, sticky="w")
         self.youtube_progress = ctk.CTkProgressBar(frame); self.youtube_progress.grid(row=6, column=0, sticky="ew", pady=(4, 5)); self.youtube_progress.set(0)
-        self.youtube_details = ctk.CTkLabel(frame, text="0%", text_color="#94A3B8"); self.youtube_details.grid(row=7, column=0, sticky="w")
+        self.youtube_details = ctk.CTkLabel(frame, text="0%", text_color=UI["muted"]); self.youtube_details.grid(row=7, column=0, sticky="w")
         self.youtube_download_button = ctk.CTkButton(frame, text="BAIXAR VÍDEO", height=48, font=ctk.CTkFont(size=16, weight="bold"), command=self._start_youtube_download); self.youtube_download_button.grid(row=8, column=0, sticky="ew", pady=(16, 0))
 
     def _choose_youtube_folder(self) -> None:
@@ -743,7 +835,7 @@ class ContentPlannerApp(ctk.CTk):
         def task() -> None:
             try:
                 info = fetch_info(url); self.after(0, lambda: (self.youtube_info.configure(text=f"{info.title}\n\nCanal: {info.channel}\nDuração: {youtube_duration(info.duration)}\nMelhor resolução: {info.resolution}"), self.youtube_status.configure(text="Informações carregadas.")))
-            except Exception as exc: self.after(0, lambda: self._show_error("YouTube", str(exc)))
+            except Exception as exc: self.after(0, lambda message=str(exc): self._show_error("YouTube", message))
         threading.Thread(target=task, daemon=True).start()
 
     def _start_youtube_download(self) -> None:
@@ -761,8 +853,8 @@ class ContentPlannerApp(ctk.CTk):
             elif data.get("status") == "finished": self.after(0, lambda: self.youtube_status.configure(text="Processando arquivo…"))
         def task() -> None:
             try:
-                result = download_youtube(url, destination, progress); self.after(0, lambda: (self.youtube_progress.set(1), self.youtube_status.configure(text="Download concluído."), self.youtube_download_button.configure(state="normal"), self._show_info("Download concluído", f"Arquivo salvo em:\n{result}")))
-            except Exception as exc: self.after(0, lambda: (self.youtube_download_button.configure(state="normal"), self._show_error("Falha no download", str(exc))))
+                result = download_youtube(url, destination, progress); self.after(0, lambda: self._finish_youtube_download(result))
+            except Exception as exc: self.after(0, lambda message=str(exc): (self.youtube_download_button.configure(state="normal"), self._show_error("Falha no download", message)))
         threading.Thread(target=task, daemon=True).start()
 
     def _select_video(self) -> None:
@@ -785,7 +877,7 @@ class ContentPlannerApp(ctk.CTk):
             try:
                 self.video_project.subtitles = transcribe(self.video_project.video_path, self.video_model.get(), 5, self._video_progress_update); self.after(0, self._refresh_video_table)
             except Exception as exc:
-                self.after(0, lambda: (self.video_status.configure(text=f"Falha na transcrição: {exc}"), self.video_progress.set(0), self._show_error("Falha na transcrição", str(exc))))
+                self.after(0, lambda message=str(exc): (self.video_status.configure(text=f"Falha na transcrição: {message}"), self.video_progress.set(0), self._show_error("Falha na transcrição", message)))
             finally:
                 self.after(0, self._finish_video_task)
         threading.Thread(target=task, daemon=True).start()
@@ -807,7 +899,7 @@ class ContentPlannerApp(ctk.CTk):
             try:
                 silences=detect_silences(self.video_project.video_path,settings.threshold_db,settings.min_duration); self.silence_cuts=plan_cuts(silences,settings); duration,_,_=probe(self.video_project.video_path); final=duration-sum(c.end-c.start for c in self.silence_cuts)
                 self.after(0,lambda:(self.silence_summary.configure(text=f"Silêncios encontrados: {len(silences)} · Tempo original: {duration:.1f}s · Final estimado: {final:.1f}s"),self.silence_apply.configure(state="normal" if self.silence_cuts else "disabled"),self.video_status.configure(text="Timeline: cortes de silêncio calculados.")))
-            except Exception as exc: self.after(0,lambda:self._show_error("Análise de silêncio",str(exc)))
+            except Exception as exc: self.after(0,lambda message=str(exc):self._show_error("Análise de silêncio",message))
         threading.Thread(target=task,daemon=True).start()
 
     def _apply_silence_edits(self) -> None:
@@ -816,7 +908,7 @@ class ContentPlannerApp(ctk.CTk):
         def task():
             try:
                 duration,_,_=probe(source); segments=output_segments(duration,self.silence_cuts); apply_cuts(source,self.silence_cuts,output,self._video_progress_update); self.video_project.video_path=output; self.video_project.motion_segments=segments; self.video_project.subtitles=remap_subtitles(original_subs,self.silence_cuts); self.after(0,lambda:(self._refresh_video_table(),self.video_info.configure(text=f"Prévia editada: {output.name} · Auto Mix: {len(segments)} movimentos")))
-            except Exception as exc: self.after(0,lambda:self._show_error("Edição automática",str(exc)))
+            except Exception as exc: self.after(0,lambda message=str(exc):self._show_error("Edição automática",message))
         threading.Thread(target=task,daemon=True).start()
 
     def _refresh_video_table(self) -> None:
@@ -884,12 +976,12 @@ class ContentPlannerApp(ctk.CTk):
         def task() -> None:
             try:
                 render(self.video_project, output, self.video_format.get(), self.video_fit.get(), self._video_progress_update, self.export_with_captions.get()); self.after(0, lambda: self._show_info("Exportação concluída", f"Vídeo salvo em:\n{output}"))
-            except Exception as exc: self.after(0, lambda: self._show_error("Falha na exportação", str(exc)))
+            except Exception as exc: self.after(0, lambda message=str(exc): self._show_error("Falha na exportação", message))
         threading.Thread(target=task, daemon=True).start()
 
     def show_settings(self) -> None:
         frame = self._set_active_view("Configurações", "Configurações", "Credenciais do Trello e caminhos do projeto.")
-        box = ctk.CTkFrame(frame, fg_color="#111827", corner_radius=10)
+        box = ctk.CTkFrame(frame, fg_color=UI["surface"], corner_radius=10, border_width=1, border_color=UI["border"])
         box.grid(row=0, column=0, sticky="ew")
         box.grid_columnconfigure(1, weight=1)
 
@@ -908,23 +1000,31 @@ class ContentPlannerApp(ctk.CTk):
             entries[label] = entry
 
         def save_settings() -> None:
-            for key, entry in entries.items():
-                value = entry.get().strip()
-                set_secret(key, value)
+            values = {key: entry.get().strip() for key, entry in entries.items()}
+            try:
+                for key, value in values.items():
+                    set_secret(key, value)
+            except Exception as exc:
+                self._show_error("Configurações", str(exc))
+                return
+            for key, value in values.items():
                 self.db.delete_setting(key)
-                os.environ[key] = value
+                if value:
+                    os.environ[key] = value
+                else:
+                    os.environ.pop(key, None)
             self._show_info("Configurações", "Credenciais salvas no cofre do Windows.")
 
-        ctk.CTkButton(box, text="Salvar credenciais", command=save_settings).grid(row=3, column=1, sticky="e", padx=16, pady=16)
+        ctk.CTkButton(box, text="Salvar credenciais", command=save_settings).grid(row=4, column=1, sticky="e", padx=16, pady=16)
         ctk.CTkLabel(
             box,
-            text=f"Banco: {Path('database/content_planner.db')}\nArquivos gerados: {Path('exports')}\nA chave OpenAI fica no cofre do Windows; nunca a envie por mensagens ou a inclua no GitHub.",
-            text_color="#94A3B8",
+            text=f"Banco: {self.db.db_path}\nArquivos gerados: {ROOT_DIR / 'exports'}\nA chave OpenAI fica no cofre do Windows; nunca a envie por mensagens ou a inclua no GitHub.",
+            text_color=UI["muted"],
             justify="left",
-        ).grid(row=4, column=0, columnspan=2, sticky="w", padx=16, pady=(0, 16))
+        ).grid(row=5, column=0, columnspan=2, sticky="w", padx=16, pady=(0, 16))
 
-    def _month_action_panel(self, frame: ctk.CTkFrame, button_text: str, action) -> None:
-        panel = ctk.CTkFrame(frame, fg_color="#111827", corner_radius=10)
+    def _month_action_panel(self, frame: ctk.CTkFrame, button_text: str, action):
+        panel = ctk.CTkFrame(frame, fg_color=UI["surface"], corner_radius=10, border_width=1, border_color=UI["border"])
         panel.grid(row=0, column=0, sticky="ew")
         panel.grid_columnconfigure(1, weight=1)
 
@@ -954,11 +1054,14 @@ class ContentPlannerApp(ctk.CTk):
             month = MONTHS.index(month_menu.get()) + 1
             action(client, year, month)
 
-        ctk.CTkButton(panel, text=button_text, command=run_action).grid(row=0, column=3, padx=16, pady=16)
+        button = ctk.CTkButton(panel, text=button_text, command=run_action)
+        button.grid(row=0, column=3, padx=16, pady=16)
+        return button
 
     def _parse_year(self, value: str) -> int | None:
         try:
-            return int(value)
+            year = int(value)
+            return year if 1 <= year <= 9999 else None
         except ValueError:
             return None
 
@@ -1009,16 +1112,16 @@ class ContentPlannerApp(ctk.CTk):
 
             posts = self.db.get_posts_for_day(self.selected_client_id, post_date)
             if not posts:
-                ctk.CTkLabel(list_frame, text="Nenhum conteúdo neste dia.", text_color="#94A3B8").pack(anchor="w", pady=8)
+                ctk.CTkLabel(list_frame, text="Nenhum conteúdo neste dia.", text_color=UI["muted"]).pack(anchor="w", pady=8)
 
             for post in posts:
-                item = ctk.CTkFrame(list_frame, fg_color="#1F2937", corner_radius=8)
+                item = ctk.CTkFrame(list_frame, fg_color=UI["surface_alt"], corner_radius=8)
                 item.pack(fill="x", pady=5)
                 ctk.CTkLabel(item, text=post.title, font=ctk.CTkFont(weight="bold")).pack(anchor="w", padx=12, pady=(8, 0))
                 ctk.CTkLabel(
                     item,
                     text=f"{post.content_type} | {post.platform} | {post.status}",
-                    text_color="#94A3B8",
+                    text_color=UI["muted"],
                 ).pack(anchor="w", padx=12, pady=(0, 8))
                 actions = ctk.CTkFrame(item, fg_color="transparent")
                 actions.pack(anchor="e", padx=10, pady=(0, 10))
@@ -1032,8 +1135,8 @@ class ContentPlannerApp(ctk.CTk):
                     actions,
                     text="Excluir",
                     width=82,
-                    fg_color="#991B1B",
-                    hover_color="#B91C1C",
+                    fg_color=UI["error"],
+                    hover_color="#A91F30",
                     command=lambda p=post: self._delete_post(p, modal),
                 ).pack(side="left", padx=4)
 
@@ -1041,7 +1144,7 @@ class ContentPlannerApp(ctk.CTk):
         ctk.CTkButton(modal.body, text="Adicionar conteúdo", command=lambda: self._open_post_modal(post_date, None, modal)).pack(
             fill="x", pady=(0, 8)
         )
-        ctk.CTkButton(modal.body, text="Fechar", fg_color="#334155", command=modal.destroy).pack(fill="x")
+        ctk.CTkButton(modal.body, text="Fechar", fg_color=UI["secondary"], hover_color=UI["secondary_hover"], text_color=UI["text"], command=modal.destroy).pack(fill="x")
 
     def _open_post_modal(self, post_date: str, post: Post | None, parent_modal: ctk.CTkToplevel | None = None) -> None:
         modal = FormModal(self, "Conteúdo", width=720, height=760)
@@ -1153,35 +1256,57 @@ class ContentPlannerApp(ctk.CTk):
             self._show_info("Trello", "Todos os posts deste mês já foram enviados ao Trello.")
             return
         list_name = f"{client.name} - {MONTHS[month - 1]} {year}"
-        try:
-            settings = {key: get_secret(key, self.db.get_setting(key)) for key in ("TRELLO_API_KEY", "TRELLO_TOKEN", "TRELLO_BOARD_ID")}
-            api = TrelloAPI(TrelloConfig.from_environment(settings))
-            list_setting = f"TRELLO_LIST_{client.id}_{year}_{month}"
-            list_id = self.db.get_setting(list_setting)
-            if not list_id:
-                list_id = api.create_list(list_name)
-                self.db.set_setting(list_setting, list_id)
-            created = {}
-            for post in pending_posts:
-                if post.id is not None:
-                    card_id = api.create_card(list_id, post)
-                    self.db.update_post_trello_card(post.id, card_id)
-                    created[post.id] = card_id
-        except Exception as exc:
-            self._show_error("Erro no Trello", str(exc))
-            return
-        self._show_info("Trello", f"{len(created)} cards criados com sucesso.")
+        button = getattr(self, "trello_action_button", None)
+        if button and button.winfo_exists():
+            button.configure(state="disabled", text="Enviando...")
+
+        def finish(message: str | None = None, error: str | None = None) -> None:
+            try:
+                if button and button.winfo_exists():
+                    button.configure(state="normal", text="Enviar para Trello")
+            except TclError:
+                pass
+            if error:
+                self._show_error("Erro no Trello", error)
+            elif message:
+                self._show_info("Trello", message)
+
+        def task() -> None:
+            created: dict[int, str] = {}
+            try:
+                settings = {key: get_secret(key, self.db.get_setting(key)) for key in ("TRELLO_API_KEY", "TRELLO_TOKEN", "TRELLO_BOARD_ID")}
+                api = TrelloAPI(TrelloConfig.from_environment(settings))
+                list_setting = f"TRELLO_LIST_{client.id}_{year}_{month}"
+                list_id = self.db.get_setting(list_setting)
+                if not list_id:
+                    list_id = api.create_list(list_name)
+                    self.db.set_setting(list_setting, list_id)
+                for post in pending_posts:
+                    if post.id is not None:
+                        card_id = api.create_card(list_id, post)
+                        self.db.update_post_trello_card(post.id, card_id)
+                        created[post.id] = card_id
+            except Exception as exc:
+                detail = f"{exc} ({len(created)} card(s) enviado(s) antes da falha.)" if created else str(exc)
+                self.after(0, lambda message=detail: finish(error=message))
+                return
+            self.after(0, lambda count=len(created): finish(message=f"{count} cards criados com sucesso."))
+
+        threading.Thread(target=task, daemon=True).start()
+
+    def _finish_youtube_download(self, result: Path) -> None:
+        self.video_project = VideoProject(result)
+        self.youtube_progress.set(1)
+        self.youtube_status.configure(text="Download concluído. O vídeo já está disponível nas etapas Legendas e Cortes.")
+        self.youtube_download_button.configure(state="normal")
+        self._show_info("Download concluído", f"Arquivo salvo e carregado no Estúdio:\n{result}")
 
     def _refresh_active_view(self) -> None:
         views = {
             "Dashboard": self.show_dashboard,
             "Clientes": self.show_clients,
-            "Calendário": self.show_calendar,
-            "Exportar PDF": self.show_export,
-            "Trello": self.show_trello,
-            "Legendas de Vídeo": self.show_video_subtitles,
-            "Baixar YouTube": self.show_youtube_downloader,
-            "Encontrar Cortes": self.show_clip_finder,
+            "Planejamento": self.show_planning,
+            "Estúdio de Vídeo": self.show_video_studio,
             "Encarte de Ofertas": self.show_offer_flyer,
             "Configurações": self.show_settings,
         }
@@ -1195,27 +1320,27 @@ class FormModal(ctk.CTkToplevel):
         self.geometry(f"{width}x{height}")
         self.transient(master)
         self.grab_set()
-        self.configure(fg_color="#0F172A")
-        self.body = ctk.CTkScrollableFrame(self, fg_color="#0F172A")
+        self.configure(fg_color=UI["canvas"])
+        self.body = ctk.CTkScrollableFrame(self, fg_color=UI["canvas"])
         self.body.pack(fill="both", expand=True, padx=20, pady=20)
         ctk.CTkLabel(self.body, text=title, font=ctk.CTkFont(size=22, weight="bold")).pack(anchor="w", pady=(0, 14))
 
     def entry(self, label: str, value: str = "") -> ctk.CTkEntry:
-        ctk.CTkLabel(self.body, text=label, text_color="#CBD5E1").pack(anchor="w", pady=(8, 4))
+        ctk.CTkLabel(self.body, text=label, text_color=UI["text"]).pack(anchor="w", pady=(8, 4))
         entry = ctk.CTkEntry(self.body, height=38)
         entry.insert(0, value)
         entry.pack(fill="x")
         return entry
 
     def text(self, label: str, value: str = "", height: int = 100) -> ctk.CTkTextbox:
-        ctk.CTkLabel(self.body, text=label, text_color="#CBD5E1").pack(anchor="w", pady=(8, 4))
+        ctk.CTkLabel(self.body, text=label, text_color=UI["text"]).pack(anchor="w", pady=(8, 4))
         textbox = ctk.CTkTextbox(self.body, height=height)
         textbox.insert("1.0", value)
         textbox.pack(fill="x")
         return textbox
 
     def option(self, label: str, values: list[str], value: str) -> ctk.CTkOptionMenu:
-        ctk.CTkLabel(self.body, text=label, text_color="#CBD5E1").pack(anchor="w", pady=(8, 4))
+        ctk.CTkLabel(self.body, text=label, text_color=UI["text"]).pack(anchor="w", pady=(8, 4))
         option = ctk.CTkOptionMenu(self.body, values=values)
         option.set(value)
         option.pack(fill="x")
@@ -1224,5 +1349,5 @@ class FormModal(ctk.CTkToplevel):
     def actions(self, save_command) -> None:
         actions = ctk.CTkFrame(self.body, fg_color="transparent")
         actions.pack(fill="x", pady=(18, 0))
-        ctk.CTkButton(actions, text="Cancelar", fg_color="#334155", command=self.destroy).pack(side="right", padx=(8, 0))
+        ctk.CTkButton(actions, text="Cancelar", fg_color=UI["secondary"], hover_color=UI["secondary_hover"], text_color=UI["text"], command=self.destroy).pack(side="right", padx=(8, 0))
         ctk.CTkButton(actions, text="Salvar", command=save_command).pack(side="right")

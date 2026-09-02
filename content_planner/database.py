@@ -2,13 +2,19 @@ from __future__ import annotations
 
 import sqlite3
 import sys
+import os
+import shutil
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
 ROOT_DIR = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent.parent
-DATABASE_DIR = ROOT_DIR / "database"
+if getattr(sys, "frozen", False):
+    _local_data = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+    DATABASE_DIR = _local_data / "NeivaPlanner" / "database"
+else:
+    DATABASE_DIR = ROOT_DIR / "database"
 DATABASE_PATH = DATABASE_DIR / "content_planner.db"
 
 
@@ -41,7 +47,16 @@ class Database:
     def __init__(self, db_path: Path = DATABASE_PATH) -> None:
         self.db_path = db_path
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._migrate_legacy_database()
         self.initialize()
+
+    def _migrate_legacy_database(self) -> None:
+        """Preserva bancos de versões portáteis anteriores ao mudar para LocalAppData."""
+        if not getattr(sys, "frozen", False) or self.db_path.exists():
+            return
+        legacy_path = ROOT_DIR / "database" / "content_planner.db"
+        if legacy_path.is_file() and legacy_path.resolve() != self.db_path.resolve():
+            shutil.copy2(legacy_path, self.db_path)
 
     @contextmanager
     def connect(self) -> Iterable[sqlite3.Connection]:

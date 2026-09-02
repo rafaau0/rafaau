@@ -1,17 +1,25 @@
 # -*- mode: python ; coding: utf-8 -*-
 import sys
 from pathlib import Path
+from PyInstaller.utils.hooks import collect_data_files
 
 PYTHON_HOME = Path(sys.base_prefix)
 TK_DLLS = PYTHON_HOME / "DLLs"
 TK_DATA = PYTHON_HOME / "tcl"
+FFMPEG_DIR = Path('assets/ffmpeg')
+OPTIONAL_FFMPEG = [
+    (str(FFMPEG_DIR / name), 'assets/ffmpeg')
+    for name in ('ffmpeg.exe', 'ffprobe.exe')
+    if (FFMPEG_DIR / name).is_file()
+]
+FASTER_WHISPER_DATA = collect_data_files('faster_whisper')
 
 
 a = Analysis(
     ['content_planner/main.py'],
     pathex=[],
-    binaries=[(str(TK_DLLS / '_tkinter.pyd'), '.'), (str(TK_DLLS / 'tcl86t.dll'), '.'), (str(TK_DLLS / 'tk86t.dll'), '.')],
-    datas=[('assets/neiva_logo.png', 'assets'), ('assets/neiva_logo.ico', 'assets'), (str(TK_DATA / 'tcl8.6'), '_tcl_data/tcl8.6'), (str(TK_DATA / 'tk8.6'), '_tcl_data/tk8.6')],
+    binaries=[(str(TK_DLLS / '_tkinter.pyd'), '.'), (str(TK_DLLS / 'tcl86t.dll'), '.'), (str(TK_DLLS / 'tk86t.dll'), '.'), *OPTIONAL_FFMPEG],
+    datas=[('assets/neiva_logo.png', 'assets'), ('assets/neiva_logo.ico', 'assets'), ('assets/neiva_light.json', 'assets'), (str(TK_DATA / 'tcl8.6'), '_tcl_data'), (str(TK_DATA / 'tk8.6'), '_tk_data'), *FASTER_WHISPER_DATA],
     hiddenimports=['tkinter', 'tkinter.messagebox'],
     hookspath=['hooks'],
     hooksconfig={},

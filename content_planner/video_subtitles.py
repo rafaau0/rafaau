@@ -96,6 +96,7 @@ def _time(seconds: float, vtt: bool = False) -> str:
 
 
 def write_captions(subtitles: list[Subtitle], output: Path, vtt: bool = False) -> None:
+    output.parent.mkdir(parents=True, exist_ok=True)
     lines: list[str] = ["WEBVTT", ""] if vtt else []
     for index, subtitle in enumerate(subtitles, 1):
         if not vtt:
@@ -141,7 +142,7 @@ def transcribe(video: Path, model_name: str, max_words: int, progress=None) -> l
 
 def render(project: VideoProject, output: Path, video_format: str, fit_mode: str, progress=None, burn_subtitles: bool = True) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
-    temporary_srt = output.with_suffix(".ass")
+    temporary_srt = Path(tempfile.gettempdir()) / f"neiva_{output.stem}_{id(project)}.ass"
     style = getattr(project, "caption_style", "Viral")
     position = getattr(project, "caption_position", "Centro")
     font = getattr(project, "caption_font", "Arial")
@@ -225,7 +226,11 @@ def render(project: VideoProject, output: Path, video_format: str, fit_mode: str
     crf = {"Alta": "18", "Média": "23", "Baixa": "28"}.get(quality, "18")
     # CRF mantém a qualidade escolhida; o preset rápido reduz o tempo de codificação.
     encoder_preset = {"Alta": "fast", "Média": "veryfast", "Baixa": "superfast"}.get(quality, "fast")
-    result = subprocess.run([_ffmpeg(), "-y", "-i", str(project.video_path), "-vf", filters, "-c:v", "libx264", "-crf", crf, "-preset", encoder_preset, "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(output)], capture_output=True, text=True)
-    if result.returncode:
-        raise VideoError(result.stderr[-1600:] or "Falha na renderização.")
-    if progress: progress("Vídeo exportado.", 100)
+    try:
+        result = subprocess.run([_ffmpeg(), "-y", "-i", str(project.video_path), "-vf", filters, "-c:v", "libx264", "-crf", crf, "-preset", encoder_preset, "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(output)], capture_output=True, text=True)
+        if result.returncode:
+            raise VideoError(result.stderr[-1600:] or "Falha na renderização.")
+        if progress: progress("Vídeo exportado.", 100)
+    finally:
+        if burn_subtitles:
+            temporary_srt.unlink(missing_ok=True)
