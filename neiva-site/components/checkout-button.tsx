@@ -36,7 +36,7 @@ export function CheckoutButton({ plan, featured }: { plan: string; featured?: bo
   }
 
   if (!open) {
-    return <button type="button" onClick={() => setOpen(true)} className={`mt-6 block w-full rounded-full py-4 text-center font-bold ${featured ? 'bg-violet-500 text-white' : 'bg-[#17211f] text-white'}`}>Quero assinar</button>;
+    return <button type="button" onClick={() => setOpen(true)} className={`mt-6 block w-full rounded-lg py-4 text-center font-bold ${featured ? 'bg-[#FF263D] text-white hover:bg-[#D91E32]' : 'bg-[#17191F] text-white hover:bg-[#343841]'} transition`}>Quero assinar</button>;
   }
 
   return <form className="mt-6 space-y-3" onSubmit={checkout}>
@@ -46,7 +46,7 @@ export function CheckoutButton({ plan, featured }: { plan: string; featured?: bo
     <label className="block text-sm font-semibold">Seu e-mail
       <input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} className="mt-1 w-full rounded-xl border border-stone-300 bg-white px-3 py-2 font-normal" autoComplete="email" />
     </label>
-    <button type="submit" disabled={loading} className={`block w-full rounded-full py-4 text-center font-bold ${featured ? 'bg-violet-500 text-white' : 'bg-[#17211f] text-white'} disabled:opacity-60`}>{loading ? 'Abrindo checkout...' : 'Continuar para pagamento'}</button>
+    <button type="submit" disabled={loading} className={`block w-full rounded-lg py-4 text-center font-bold ${featured ? 'bg-[#FF263D] text-white hover:bg-[#D91E32]' : 'bg-[#17191F] text-white hover:bg-[#343841]'} transition disabled:opacity-60`}>{loading ? 'Abrindo checkout...' : 'Continuar para pagamento'}</button>
     <p className="text-xs text-slate-500">Usaremos seu e-mail para identificar sua licenca.</p>
     {error && <p className="text-center text-xs text-red-600">{error}</p>}
   </form>;
