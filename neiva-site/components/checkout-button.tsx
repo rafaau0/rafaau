@@ -25,7 +25,15 @@ export function CheckoutButton({ plan, featured }: { plan: string; featured?: bo
       const body = existingAccount ? { email, password } : { name, email, password };
       const authResponse = await fetch(`${API_URL}${endpoint}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const authData = await authResponse.json();
-      if (!authResponse.ok) throw new Error(authData.detail || 'Nao foi possivel acessar sua conta.');
+      if (!authResponse.ok) {
+        if (authResponse.status === 409 && !existingAccount) {
+          setExistingAccount(true);
+          setError('Esta conta ja existe. Informe a senha abaixo para entrar e continuar.');
+          setLoading(false);
+          return;
+        }
+        throw new Error(authData.detail || 'Nao foi possivel acessar sua conta.');
+      }
       const response = await fetch(`${API_URL}/v1/billing/checkout`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authData.access_token}` }, body: JSON.stringify({ plan_code: plan }),
       });
