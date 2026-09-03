@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import html
 import json
 import logging
 import os
@@ -92,6 +93,23 @@ class ProcessedWebhook(Base):
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
+class CheckoutOrder(Base):
+    """Pedido criado antes do Checkout e conciliado pelo webhook do Asaas."""
+    __tablename__ = "checkout_orders"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    public_id: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    claim_token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    customer_name: Mapped[str] = mapped_column(String(120))
+    customer_email: Mapped[str] = mapped_column(String(254), index=True)
+    plan_code: Mapped[str] = mapped_column(String(30))
+    checkout_id: Mapped[str | None] = mapped_column(String(120), unique=True, nullable=True)
+    status: Mapped[str] = mapped_column(String(30), default="pending")
+    client_id: Mapped[int | None] = mapped_column(ForeignKey("clients.id"), nullable=True, index=True)
+    # O cÃ³digo fica armazenado somente atÃ© a primeira ativaÃ§Ã£o no aplicativo.
+    activation_code: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
 class SubtitleInput(BaseModel):
     start: float = Field(ge=0)
     end: float = Field(gt=0)
@@ -127,6 +145,21 @@ class RegisterSubscriptionRequest(BaseModel):
 
 class CheckoutRequest(BaseModel):
     plan_code: str
+    customer_name: str = Field(min_length=2, max_length=120)
+    customer_email: str = Field(min_length=5, max_length=254)
+
+    @field_validator("customer_name")
+    @classmethod
+    def normalize_customer_name(cls, value: str) -> str:
+        return " ".join(value.split())
+
+    @field_validator("customer_email")
+    @classmethod
+    def validate_customer_email(cls, value: str) -> str:
+        email = value.strip().lower()
+        if email.count("@") != 1 or email.startswith("@") or email.endswith("@"):
+            raise ValueError("Informe um e-mail vÃ¡lido.")
+        return email
 
 
 PLANS = {
@@ -137,6 +170,31 @@ PLANS = {
 
 def token_hash(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def new_activation_code() -> str:
+    return f"NEIVA-{secrets.token_urlsafe(12).upper()}"
+
+
+def activate_paid_order(session: Session, order: CheckoutOrder) -> None:
+    """Cria uma Ãºnica licenÃ§a para um pedido confirmado pelo Asaas."""
+    if order.client_id is not None:
+        order.status = "paid"
+        return
+    plan = PLANS[order.plan_code]
+    activation_code = new_activation_code()
+    client = Client(
+        name=f"{order.customer_name} [{order.public_id[:8]}]",
+        token_hash=token_hash(f"neiva_{secrets.token_urlsafe(32)}"),
+        monthly_limit=plan["ai_credits"],
+        active=True,
+    )
+    session.add(client)
+    session.flush()
+    session.add(ActivationCode(client_id=client.id, code_hash=token_hash(activation_code)))
+    order.client_id = client.id
+    order.activation_code = activation_code
+    order.status = "paid"
 
 
 def db_session():
@@ -239,7 +297,9 @@ def health() -> dict[str, str]:
 
 
 @app.get("/v1/billing/return", response_class=HTMLResponse, include_in_schema=False)
-def checkout_return(checkout: str = "") -> str:
+def checkout_return(
+    checkout: str = "", order: str = "", claim: str = "", session: Session = Depends(db_session)
+) -> HTMLResponse:
     """Página pública temporária para retornos do Checkout antes do site ser publicado."""
     messages = {
         "success": "Pagamento enviado com sucesso. Você receberá a confirmação da sua licença após a aprovação.",
@@ -247,7 +307,27 @@ def checkout_return(checkout: str = "") -> str:
         "expired": "Este checkout expirou. Volte ao Neiva Planner para gerar um novo link.",
     }
     message = messages.get(checkout, "Retorno de checkout recebido.")
-    return f"<main><h1>Neiva Planner</h1><p>{message}</p></main>"
+    if checkout == "success" and order and claim:
+        checkout_order = session.scalar(select(CheckoutOrder).where(CheckoutOrder.public_id == order))
+        if checkout_order and hmac.compare_digest(checkout_order.claim_token_hash, token_hash(claim)):
+            if checkout_order.status == "paid" and checkout_order.activation_code:
+                message = f"LicenÃ§a liberada. Seu cÃ³digo de ativaÃ§Ã£o Ã©: {checkout_order.activation_code}"
+            else:
+                message = "Pagamento recebido. Aguarde alguns segundos e atualize esta pÃ¡gina para ver seu cÃ³digo de ativaÃ§Ã£o."
+    page = f"<main><h1>Neiva Planner</h1><p>{html.escape(message)}</p></main>"
+    return HTMLResponse(page, headers={"Referrer-Policy": "no-referrer"})
+
+
+@app.get("/v1/billing/orders/{public_id}")
+def checkout_order_status(public_id: str, claim: str, session: Session = Depends(db_session)) -> dict:
+    """Consulta limitada ao navegador que iniciou o checkout; nunca expÃµe dados de pagamento."""
+    checkout_order = session.scalar(select(CheckoutOrder).where(CheckoutOrder.public_id == public_id))
+    if not checkout_order or not hmac.compare_digest(checkout_order.claim_token_hash, token_hash(claim)):
+        raise HTTPException(status_code=404, detail="Pedido nÃ£o encontrado.")
+    return {
+        "status": checkout_order.status,
+        "activation_code": checkout_order.activation_code if checkout_order.status == "paid" else None,
+    }
 
 
 @app.get("/v1/billing/plans")
@@ -257,34 +337,45 @@ def list_plans() -> dict:
 
 
 @app.post("/v1/billing/checkout")
-def create_checkout(payload: CheckoutRequest) -> dict[str, str]:
+def create_checkout(payload: CheckoutRequest, session: Session = Depends(db_session)) -> dict[str, str]:
     """Cria uma sessão de checkout recorrente hospedada pelo Asaas."""
     plan = PLANS.get(payload.plan_code)
     api_key = os.getenv("ASAAS_API_KEY", "")
     base_url = os.getenv("ASAAS_BASE_URL", "").rstrip("/")
     if not plan or not api_key or not base_url:
         raise HTTPException(status_code=503, detail="Checkout ainda não configurado.")
+    claim_token = secrets.token_urlsafe(32)
+    checkout_order = CheckoutOrder(
+        public_id=secrets.token_urlsafe(18),
+        claim_token_hash=token_hash(claim_token),
+        customer_name=payload.customer_name,
+        customer_email=payload.customer_email,
+        plan_code=payload.plan_code,
+    )
+    session.add(checkout_order)
+    session.flush()
     tomorrow = (datetime.now(timezone.utc) + timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
     callback_base = os.getenv("SITE_URL", "").rstrip("/")
     if not callback_base or "localhost" in callback_base.lower() or "127.0.0.1" in callback_base:
         callback_base = "https://neiva-ai-api.onrender.com/v1/billing/return"
         callback_urls = {
-            "successUrl": f"{callback_base}?checkout=success",
-            "cancelUrl": f"{callback_base}?checkout=cancel",
-            "expiredUrl": f"{callback_base}?checkout=expired",
+            "successUrl": f"{callback_base}?checkout=success&order={checkout_order.public_id}&claim={claim_token}",
+            "cancelUrl": f"{callback_base}?checkout=cancel&order={checkout_order.public_id}",
+            "expiredUrl": f"{callback_base}?checkout=expired&order={checkout_order.public_id}",
         }
     else:
         callback_urls = {
-            "successUrl": f"{callback_base}/?checkout=success",
-            "cancelUrl": f"{callback_base}/?checkout=cancel",
-            "expiredUrl": f"{callback_base}/?checkout=expired",
+            "successUrl": f"{callback_base}/?checkout=success&order={checkout_order.public_id}",
+            "cancelUrl": f"{callback_base}/?checkout=cancel&order={checkout_order.public_id}",
+            "expiredUrl": f"{callback_base}/?checkout=expired&order={checkout_order.public_id}",
         }
     # Assinatura recorrente no Checkout Asaas usa cartão; Pix recorrente é um
     # fluxo separado de Pix Automático e será integrado como forma adicional.
     body = {"billingTypes": ["CREDIT_CARD"], "chargeTypes": ["RECURRENT"], "minutesToExpire": 60,
             "callback": callback_urls,
             "items": [{"name": plan["name"], "description": "Assinatura Neiva Planner", "quantity": 1, "value": plan["monthly_price"]}],
-            "subscription": {"cycle": "MONTHLY", "nextDueDate": tomorrow}}
+            "subscription": {"cycle": "MONTHLY", "nextDueDate": tomorrow},
+            "externalReference": checkout_order.public_id}
     try:
         response = requests.post(f"{base_url}/checkouts", headers={"access_token": api_key, "Content-Type": "application/json", "User-Agent": "NeivaPlanner/1.0"}, json=body, timeout=30)
     except requests.RequestException as exc:
@@ -311,8 +402,15 @@ def create_checkout(payload: CheckoutRequest) -> dict[str, str]:
     checkout_id = response.json().get("id")
     if not checkout_id:
         raise HTTPException(status_code=502, detail="O Asaas não retornou um checkout.")
+    checkout_order.checkout_id = checkout_id
+    checkout_order.status = "checkout_created"
+    session.commit()
     checkout_host = "https://sandbox.asaas.com" if "sandbox" in base_url else "https://asaas.com"
-    return {"checkout_url": f"{checkout_host}/checkoutSession/show?id={checkout_id}"}
+    return {
+        "checkout_url": f"{checkout_host}/checkoutSession/show?id={checkout_id}",
+        "order_id": checkout_order.public_id,
+        "claim_token": claim_token,
+    }
 
 
 @app.post("/v1/cuts")
@@ -336,6 +434,9 @@ def activate(payload: ActivateRequest, session: Session = Depends(db_session)) -
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Esta licença não está ativa.")
     raw_token = f"neiva_{secrets.token_urlsafe(32)}"
     session.add(DeviceToken(client_id=client.id, token_hash=token_hash(raw_token)))
+    checkout_order = session.scalar(select(CheckoutOrder).where(CheckoutOrder.activation_code == payload.activation_code))
+    if checkout_order:
+        checkout_order.activation_code = None
     activation.used_at = datetime.now(timezone.utc)
     session.commit()
     return {"access_token": raw_token}
@@ -356,10 +457,32 @@ def asaas_webhook(
         raise HTTPException(status_code=400, detail="Evento sem identificador.")
     if session.scalar(select(ProcessedWebhook).where(ProcessedWebhook.event_id == event_id)):
         return {"ok": True}
+    event = str(payload.get("event", "")).strip()
+    checkout = payload.get("checkout") or {}
+    checkout_id = str(checkout.get("id", "")).strip()
+    checkout_order = session.scalar(select(CheckoutOrder).where(CheckoutOrder.checkout_id == checkout_id)) if checkout_id else None
+    if checkout_order:
+        if event == "CHECKOUT_PAID":
+            activate_paid_order(session, checkout_order)
+        elif event == "CHECKOUT_CANCELED" and checkout_order.status != "paid":
+            checkout_order.status = "cancelled"
+        elif event == "CHECKOUT_EXPIRED" and checkout_order.status != "paid":
+            checkout_order.status = "expired"
+
     payment = payload.get("payment") or {}
     provider_subscription_id = str(payment.get("subscription", "")).strip()
-    event = str(payload.get("event", "")).strip()
+    external_reference = str(payment.get("externalReference", "")).strip()
+    if checkout_order is None and external_reference:
+        checkout_order = session.scalar(select(CheckoutOrder).where(CheckoutOrder.public_id == external_reference))
     subscription = session.scalar(select(Subscription).where(Subscription.provider_subscription_id == provider_subscription_id)) if provider_subscription_id else None
+    if subscription is None and checkout_order and checkout_order.client_id and provider_subscription_id:
+        subscription = Subscription(
+            client_id=checkout_order.client_id,
+            provider_subscription_id=provider_subscription_id,
+            plan_code=checkout_order.plan_code,
+        )
+        session.add(subscription)
+        session.flush()
     if subscription:
         client = session.get(Client, subscription.client_id)
         if event in {"PAYMENT_CONFIRMED", "PAYMENT_RECEIVED"}:
