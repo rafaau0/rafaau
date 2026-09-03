@@ -289,6 +289,8 @@ app.add_middleware(
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "https://neiva-planner-site.rafaau0.workers.dev",
+        "https://rafaau.site",
+        "https://www.rafaau.site",
     ],
     # Somente o ambiente de testes define esta variável. Assim, links de
     # prévia da Cloudflare podem acessar a API de staging sem abrir a API
