@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import secrets
+from base64 import urlsafe_b64decode, urlsafe_b64encode
 from datetime import datetime, timedelta, timezone
 
 import requests
@@ -16,7 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint, create_engine, select
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint, create_engine, inspect, select, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
 
@@ -38,12 +39,25 @@ class Base(DeclarativeBase):
     pass
 
 
+class Account(Base):
+    """Conta do comprador. A senha nunca e armazenada em texto puro."""
+    __tablename__ = "accounts"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(120))
+    email: Mapped[str] = mapped_column(String(254), unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String(512))
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
 class Client(Base):
     __tablename__ = "clients"
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(120), unique=True)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True)
     monthly_limit: Mapped[int] = mapped_column(Integer, default=30)
+    account_id: Mapped[int | None] = mapped_column(ForeignKey("accounts.id"), nullable=True, index=True)
+    device_limit: Mapped[int] = mapped_column(Integer, default=2)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
@@ -70,6 +84,8 @@ class DeviceToken(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), index=True)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    device_id: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
@@ -93,6 +109,16 @@ class ProcessedWebhook(Base):
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
+class AccountSession(Base):
+    """Sessao curta usada apenas no site para iniciar o checkout autenticado."""
+    __tablename__ = "account_sessions"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
 class CheckoutOrder(Base):
     """Pedido criado antes do Checkout e conciliado pelo webhook do Asaas."""
     __tablename__ = "checkout_orders"
@@ -101,6 +127,7 @@ class CheckoutOrder(Base):
     claim_token_hash: Mapped[str] = mapped_column(String(64), unique=True)
     customer_name: Mapped[str] = mapped_column(String(120))
     customer_email: Mapped[str] = mapped_column(String(254), index=True)
+    account_id: Mapped[int | None] = mapped_column(ForeignKey("accounts.id"), nullable=True, index=True)
     plan_code: Mapped[str] = mapped_column(String(30))
     checkout_id: Mapped[str | None] = mapped_column(String(120), unique=True, nullable=True)
     status: Mapped[str] = mapped_column(String(30), default="pending")
@@ -145,21 +172,36 @@ class RegisterSubscriptionRequest(BaseModel):
 
 class CheckoutRequest(BaseModel):
     plan_code: str
-    customer_name: str = Field(min_length=2, max_length=120)
-    customer_email: str = Field(min_length=5, max_length=254)
 
-    @field_validator("customer_name")
+
+class AccountRegisterRequest(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+    email: str = Field(min_length=5, max_length=254)
+    password: str = Field(min_length=8, max_length=128)
+
+    @field_validator("name")
     @classmethod
-    def normalize_customer_name(cls, value: str) -> str:
+    def normalize_name(cls, value: str) -> str:
         return " ".join(value.split())
 
-    @field_validator("customer_email")
+    @field_validator("email")
     @classmethod
-    def validate_customer_email(cls, value: str) -> str:
-        email = value.strip().lower()
-        if email.count("@") != 1 or email.startswith("@") or email.endswith("@"):
-            raise ValueError("Informe um e-mail vÃ¡lido.")
-        return email
+    def validate_email(cls, value: str) -> str:
+        return normalize_email(value)
+
+
+class AccountLoginRequest(BaseModel):
+    email: str = Field(min_length=5, max_length=254)
+    password: str = Field(min_length=1, max_length=128)
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, value: str) -> str:
+        return normalize_email(value)
+
+
+class AppLoginRequest(AccountLoginRequest):
+    device_id: str = Field(min_length=16, max_length=120)
 
 
 PLANS = {
@@ -168,8 +210,53 @@ PLANS = {
 }
 
 
+def normalize_email(value: str) -> str:
+    email = value.strip().lower()
+    if email.count("@") != 1 or email.startswith("@") or email.endswith("@"):
+        raise ValueError("Informe um e-mail valido.")
+    local, domain = email.split("@")
+    if not local or "." not in domain or domain.startswith(".") or domain.endswith("."):
+        raise ValueError("Informe um e-mail valido.")
+    return email
+
+
 def token_hash(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def password_hash(password: str) -> str:
+    """PBKDF2 com sal individual; nao depende de pacote extra no Render."""
+    iterations = 600_000
+    salt = secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations)
+    return "pbkdf2_sha256${}${}${}".format(
+        iterations,
+        urlsafe_b64encode(salt).decode("ascii"),
+        urlsafe_b64encode(digest).decode("ascii"),
+    )
+
+
+def verify_password(password: str, encoded: str) -> bool:
+    try:
+        algorithm, raw_iterations, raw_salt, raw_digest = encoded.split("$", 3)
+        if algorithm != "pbkdf2_sha256":
+            return False
+        expected = urlsafe_b64decode(raw_digest.encode("ascii"))
+        salt = urlsafe_b64decode(raw_salt.encode("ascii"))
+        actual = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, int(raw_iterations))
+        return hmac.compare_digest(actual, expected)
+    except (ValueError, TypeError):
+        return False
+
+
+def new_account_session(session: Session, account: Account) -> str:
+    raw_token = f"neiva_web_{secrets.token_urlsafe(32)}"
+    session.add(AccountSession(
+        account_id=account.id,
+        token_hash=token_hash(raw_token),
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=2),
+    ))
+    return raw_token
 
 
 def new_activation_code() -> str:
@@ -182,16 +269,21 @@ def activate_paid_order(session: Session, order: CheckoutOrder) -> None:
         order.status = "paid"
         return
     plan = PLANS[order.plan_code]
-    activation_code = new_activation_code()
+    # Pedidos antigos continuam recebendo codigo de ativacao. Pedidos feitos
+    # por uma conta nova passam a usar login e nao precisam de codigo.
+    activation_code = new_activation_code() if order.account_id is None else None
     client = Client(
         name=f"{order.customer_name} [{order.public_id[:8]}]",
         token_hash=token_hash(f"neiva_{secrets.token_urlsafe(32)}"),
         monthly_limit=plan["ai_credits"],
+        account_id=order.account_id,
+        device_limit=plan["devices"],
         active=True,
     )
     session.add(client)
     session.flush()
-    session.add(ActivationCode(client_id=client.id, code_hash=token_hash(activation_code)))
+    if activation_code:
+        session.add(ActivationCode(client_id=client.id, code_hash=token_hash(activation_code)))
     order.client_id = client.id
     order.activation_code = activation_code
     order.status = "paid"
@@ -222,6 +314,21 @@ def current_client(
     if not client or not client.active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Chave de acesso inválida.")
     return client
+
+
+def current_account(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme), session: Session = Depends(db_session)
+) -> Account:
+    raw_token = credentials.credentials if credentials else ""
+    if not raw_token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Entre na sua conta para continuar.")
+    account_session = session.scalar(select(AccountSession).where(AccountSession.token_hash == token_hash(raw_token)))
+    if not account_session or account_session.expires_at.replace(tzinfo=timezone.utc) < datetime.now(timezone.utc):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sua sessao expirou. Entre novamente.")
+    account = session.get(Account, account_session.account_id)
+    if not account or not account.active:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Conta indisponivel.")
+    return account
 
 
 def consume_quota(session: Session, client: Client) -> None:
@@ -304,11 +411,88 @@ app.add_middleware(
 @app.on_event("startup")
 def initialize_database() -> None:
     Base.metadata.create_all(engine)
+    # create_all nao adiciona colunas em tabelas que ja existiam no PostgreSQL.
+    # Estas alteracoes sao aditivas e preservam todas as licencas anteriores.
+    additions = {
+        "clients": {"account_id": "INTEGER", "device_limit": "INTEGER DEFAULT 2"},
+        "device_tokens": {"device_id": "VARCHAR(120)", "last_seen_at": "TIMESTAMP"},
+        "checkout_orders": {"account_id": "INTEGER"},
+    }
+    inspector = inspect(engine)
+    with engine.begin() as connection:
+        for table_name, columns in additions.items():
+            existing = {column["name"] for column in inspector.get_columns(table_name)}
+            for column_name, definition in columns.items():
+                if column_name not in existing:
+                    connection.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}"))
 
 
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+def account_response(account: Account, client: Client | None = None) -> dict:
+    return {
+        "id": account.id,
+        "name": account.name,
+        "email": account.email,
+        "license_active": bool(client and client.active),
+        "plan": None if client is None else next((code for code, details in PLANS.items() if details["ai_credits"] == client.monthly_limit), None),
+    }
+
+
+@app.post("/v1/auth/register", status_code=status.HTTP_201_CREATED)
+def register_account(payload: AccountRegisterRequest, session: Session = Depends(db_session)) -> dict:
+    if session.scalar(select(Account).where(Account.email == payload.email)):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Ja existe uma conta com este e-mail. Entre para continuar.")
+    account = Account(name=payload.name, email=payload.email, password_hash=password_hash(payload.password))
+    session.add(account)
+    session.flush()
+    access_token = new_account_session(session, account)
+    session.commit()
+    return {"account": account_response(account), "access_token": access_token, "token_type": "bearer"}
+
+
+@app.post("/v1/auth/sign-in")
+def sign_in_account(payload: AccountLoginRequest, session: Session = Depends(db_session)) -> dict:
+    account = session.scalar(select(Account).where(Account.email == payload.email))
+    if not account or not account.active or not verify_password(payload.password, account.password_hash):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="E-mail ou senha incorretos.")
+    client = session.scalar(select(Client).where(Client.account_id == account.id, Client.active.is_(True)))
+    access_token = new_account_session(session, account)
+    session.commit()
+    return {"account": account_response(account, client), "access_token": access_token, "token_type": "bearer"}
+
+
+@app.post("/v1/auth/app-login")
+def app_login(payload: AppLoginRequest, session: Session = Depends(db_session)) -> dict:
+    account = session.scalar(select(Account).where(Account.email == payload.email))
+    if not account or not account.active or not verify_password(payload.password, account.password_hash):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="E-mail ou senha incorretos.")
+    client = session.scalar(select(Client).where(Client.account_id == account.id, Client.active.is_(True)))
+    if not client:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sua assinatura ainda nao esta ativa. Aguarde a aprovacao do pagamento.")
+    device = session.scalar(select(DeviceToken).where(DeviceToken.client_id == client.id, DeviceToken.device_id == payload.device_id))
+    if device is None:
+        active_devices = session.scalars(select(DeviceToken).where(DeviceToken.client_id == client.id, DeviceToken.device_id.is_not(None))).all()
+        if len(active_devices) >= client.device_limit:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"Seu plano permite ate {client.device_limit} dispositivos. Saia de um deles para entrar neste.")
+        device = DeviceToken(client_id=client.id, token_hash="", device_id=payload.device_id)
+        session.add(device)
+    raw_token = f"neiva_{secrets.token_urlsafe(32)}"
+    device.token_hash = token_hash(raw_token)
+    device.last_seen_at = datetime.now(timezone.utc)
+    session.commit()
+    return {"access_token": raw_token, "account": account_response(account, client), "token_type": "bearer"}
+
+
+@app.get("/v1/auth/session")
+def app_session(client: Client = Depends(current_client), session: Session = Depends(db_session)) -> dict:
+    account = session.get(Account, client.account_id) if client.account_id else None
+    if account is None:
+        return {"license_active": True, "legacy_license": True}
+    return {"account": account_response(account, client), "license_active": True, "legacy_license": False}
 
 
 @app.get("/v1/billing/return", response_class=HTMLResponse, include_in_schema=False)
@@ -325,7 +509,7 @@ def checkout_return(
     if checkout == "success" and order and claim:
         checkout_order = session.scalar(select(CheckoutOrder).where(CheckoutOrder.public_id == order))
         if checkout_order and hmac.compare_digest(checkout_order.claim_token_hash, token_hash(claim)):
-            if checkout_order.status == "paid" and checkout_order.activation_code:
+            if checkout_order.status == "paid":
                 message = f"LicenÃ§a liberada. Seu cÃ³digo de ativaÃ§Ã£o Ã©: {checkout_order.activation_code}"
             else:
                 message = "Pagamento recebido. Aguarde alguns segundos e atualize esta pÃ¡gina para ver seu cÃ³digo de ativaÃ§Ã£o."
@@ -341,7 +525,7 @@ def checkout_order_status(public_id: str, claim: str, session: Session = Depends
         raise HTTPException(status_code=404, detail="Pedido nÃ£o encontrado.")
     return {
         "status": checkout_order.status,
-        "activation_code": checkout_order.activation_code if checkout_order.status == "paid" else None,
+        "license_active": checkout_order.status == "paid",
     }
 
 
@@ -352,7 +536,9 @@ def list_plans() -> dict:
 
 
 @app.post("/v1/billing/checkout")
-def create_checkout(payload: CheckoutRequest, session: Session = Depends(db_session)) -> dict[str, str]:
+def create_checkout(
+    payload: CheckoutRequest, account: Account = Depends(current_account), session: Session = Depends(db_session)
+) -> dict[str, str]:
     """Cria uma sessão de checkout recorrente hospedada pelo Asaas."""
     plan = PLANS.get(payload.plan_code)
     api_key = os.getenv("ASAAS_API_KEY", "")
@@ -363,8 +549,9 @@ def create_checkout(payload: CheckoutRequest, session: Session = Depends(db_sess
     checkout_order = CheckoutOrder(
         public_id=secrets.token_urlsafe(18),
         claim_token_hash=token_hash(claim_token),
-        customer_name=payload.customer_name,
-        customer_email=payload.customer_email,
+        customer_name=account.name,
+        customer_email=account.email,
+        account_id=account.id,
         plan_code=payload.plan_code,
     )
     session.add(checkout_order)
@@ -489,6 +676,10 @@ def asaas_webhook(
     external_reference = str(payment.get("externalReference", "")).strip()
     if checkout_order is None and external_reference:
         checkout_order = session.scalar(select(CheckoutOrder).where(CheckoutOrder.public_id == external_reference))
+    # O Asaas pode enviar PAYMENT_CONFIRMED antes (ou sem) CHECKOUT_PAID.
+    # Ambos representam pagamento aprovado e precisam liberar a mesma licenca.
+    if checkout_order and event in {"CHECKOUT_PAID", "PAYMENT_CONFIRMED", "PAYMENT_RECEIVED"}:
+        activate_paid_order(session, checkout_order)
     subscription = session.scalar(select(Subscription).where(Subscription.provider_subscription_id == provider_subscription_id)) if provider_subscription_id else None
     if subscription is None and checkout_order and checkout_order.client_id and provider_subscription_id:
         subscription = Subscription(

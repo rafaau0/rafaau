@@ -12,6 +12,12 @@ def main() -> None:
     configure_logging()
     try:
         try:
+            from .account_login import require_login
+        except ImportError:
+            from content_planner.account_login import require_login
+        if not require_login():
+            return
+        try:
             from .ui import ContentPlannerApp
         except ImportError:
             from content_planner.ui import ContentPlannerApp
