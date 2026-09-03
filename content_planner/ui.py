@@ -16,6 +16,7 @@ from PIL import Image
 from .database import Client, Database, Post
 from .pdf_generator import PDFGenerator
 from .trello_api import TrelloAPI, TrelloConfig
+from .trello_auth import TrelloBoard, authorize as authorize_trello, get_app_key as get_trello_app_key, get_identity as get_trello_identity, list_boards as list_trello_boards
 from .video_subtitles import VideoError, VideoProject, probe, render, transcribe, write_captions
 from .youtube_downloader import DownloadError, download as download_youtube, duration as youtube_duration, fetch_info, is_youtube_url
 from .clip_finder import ClipSuggestion, find_suggestions
@@ -980,48 +981,117 @@ class ContentPlannerApp(ctk.CTk):
         threading.Thread(target=task, daemon=True).start()
 
     def show_settings(self) -> None:
-        frame = self._set_active_view("Configurações", "Configurações", "Credenciais do Trello e caminhos do projeto.")
+        frame = self._set_active_view("Configurações", "Configurações", "Conexões, credenciais e caminhos do projeto.")
         box = ctk.CTkFrame(frame, fg_color=UI["surface"], corner_radius=10, border_width=1, border_color=UI["border"])
         box.grid(row=0, column=0, sticky="ew")
         box.grid_columnconfigure(1, weight=1)
+        ctk.CTkLabel(box, text="TRELLO", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, sticky="w", padx=16, pady=(16, 4))
+        self.trello_connection_status = ctk.CTkLabel(box, text="Verificando conexão...", text_color=UI["muted"])
+        self.trello_connection_status.grid(row=1, column=0, columnspan=2, sticky="w", padx=16, pady=4)
+        ctk.CTkLabel(box, text="Quadro para o planejamento").grid(row=2, column=0, sticky="w", padx=16, pady=8)
+        self.trello_board_menu = ctk.CTkOptionMenu(box, values=["Conecte sua conta primeiro"], state="disabled", command=self._select_trello_board)
+        self.trello_board_menu.grid(row=2, column=1, sticky="ew", padx=16, pady=8)
+        trello_actions = ctk.CTkFrame(box, fg_color="transparent")
+        trello_actions.grid(row=3, column=0, columnspan=2, sticky="ew", padx=16, pady=(8, 16))
+        self.trello_connect_button = ctk.CTkButton(trello_actions, text="CONECTAR AO TRELLO", command=self._connect_trello)
+        self.trello_connect_button.pack(side="left")
+        self.trello_disconnect_button = ctk.CTkButton(trello_actions, text="Desconectar", fg_color=UI["secondary"], hover_color=UI["secondary_hover"], text_color=UI["text"], command=self._disconnect_trello, state="disabled")
+        self.trello_disconnect_button.pack(side="left", padx=8)
 
-        fields = [
-            ("TRELLO_API_KEY", get_secret("TRELLO_API_KEY", self.db.get_setting("TRELLO_API_KEY"))),
-            ("TRELLO_TOKEN", get_secret("TRELLO_TOKEN", self.db.get_setting("TRELLO_TOKEN"))),
-            ("TRELLO_BOARD_ID", get_secret("TRELLO_BOARD_ID", self.db.get_setting("TRELLO_BOARD_ID"))),
-            ("OPENAI_API_KEY", get_secret("OPENAI_API_KEY", self.db.get_setting("OPENAI_API_KEY"))),
-        ]
-        entries: dict[str, ctk.CTkEntry] = {}
-        for row, (label, value) in enumerate(fields):
-            ctk.CTkLabel(box, text=label).grid(row=row, column=0, sticky="w", padx=16, pady=10)
-            entry = ctk.CTkEntry(box, show="●")
-            entry.insert(0, value)
-            entry.grid(row=row, column=1, sticky="ew", padx=16, pady=10)
-            entries[label] = entry
+        openai_box = ctk.CTkFrame(frame, fg_color=UI["surface"], corner_radius=10, border_width=1, border_color=UI["border"])
+        openai_box.grid(row=1, column=0, sticky="ew", pady=(14, 0)); openai_box.grid_columnconfigure(1, weight=1)
+        ctk.CTkLabel(openai_box, text="OPENAI", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, sticky="w", padx=16, pady=16)
+        openai_entry = ctk.CTkEntry(openai_box, show="●")
+        openai_entry.insert(0, get_secret("OPENAI_API_KEY", self.db.get_setting("OPENAI_API_KEY")))
+        openai_entry.grid(row=0, column=1, sticky="ew", padx=16, pady=16)
 
-        def save_settings() -> None:
-            values = {key: entry.get().strip() for key, entry in entries.items()}
+        def save_openai() -> None:
             try:
-                for key, value in values.items():
-                    set_secret(key, value)
-            except Exception as exc:
-                self._show_error("Configurações", str(exc))
-                return
-            for key, value in values.items():
-                self.db.delete_setting(key)
-                if value:
-                    os.environ[key] = value
-                else:
-                    os.environ.pop(key, None)
-            self._show_info("Configurações", "Credenciais salvas no cofre do Windows.")
+                value = openai_entry.get().strip(); set_secret("OPENAI_API_KEY", value)
+                self.db.delete_setting("OPENAI_API_KEY")
+                if value: os.environ["OPENAI_API_KEY"] = value
+                else: os.environ.pop("OPENAI_API_KEY", None)
+                self._show_info("OpenAI", "Chave salva no cofre do Windows.")
+            except Exception as exc: self._show_error("OpenAI", str(exc))
+        ctk.CTkButton(openai_box, text="Salvar chave", command=save_openai).grid(row=1, column=1, sticky="e", padx=16, pady=(0, 16))
 
-        ctk.CTkButton(box, text="Salvar credenciais", command=save_settings).grid(row=4, column=1, sticky="e", padx=16, pady=16)
         ctk.CTkLabel(
-            box,
+            frame,
             text=f"Banco: {self.db.db_path}\nArquivos gerados: {ROOT_DIR / 'exports'}\nA chave OpenAI fica no cofre do Windows; nunca a envie por mensagens ou a inclua no GitHub.",
             text_color=UI["muted"],
             justify="left",
-        ).grid(row=5, column=0, columnspan=2, sticky="w", padx=16, pady=(0, 16))
+        ).grid(row=2, column=0, sticky="w", pady=(14, 0))
+        self.after(50, self._load_trello_connection)
+
+    def _load_trello_connection(self) -> None:
+        app_key, token = get_trello_app_key(), get_secret("TRELLO_TOKEN", self.db.get_setting("TRELLO_TOKEN"))
+        if not app_key:
+            self.trello_connection_status.configure(text="Conexão indisponível: a versão não possui uma chave de aplicativo Trello.", text_color=UI["error"])
+            self.trello_connect_button.configure(state="disabled")
+            return
+        if not token:
+            self.trello_connection_status.configure(text="Nenhuma conta conectada.")
+            return
+        self.trello_connect_button.configure(state="disabled", text="VERIFICANDO...")
+        def task() -> None:
+            try:
+                identity = get_trello_identity(app_key, token); boards = list_trello_boards(app_key, token)
+                self.after(0, lambda: self._display_trello_connection(identity.full_name or identity.username, boards))
+            except Exception as exc:
+                self.after(0, lambda message=str(exc): self._trello_connection_failed(message))
+        threading.Thread(target=task, daemon=True).start()
+
+    def _connect_trello(self) -> None:
+        app_key = get_trello_app_key()
+        if not app_key:
+            self._show_error("Trello", "A chave pública do aplicativo Trello não foi configurada nesta versão.")
+            return
+        self.trello_connect_button.configure(state="disabled", text="AGUARDANDO LOGIN...")
+        self.trello_connection_status.configure(text="Conclua a autorização na janela do navegador.")
+        def task() -> None:
+            try:
+                token = authorize_trello(app_key); identity = get_trello_identity(app_key, token); boards = list_trello_boards(app_key, token)
+                set_secret("TRELLO_TOKEN", token); self.db.delete_setting("TRELLO_TOKEN"); os.environ["TRELLO_TOKEN"] = token
+                self.after(0, lambda: self._display_trello_connection(identity.full_name or identity.username, boards))
+            except Exception as exc:
+                self.after(0, lambda message=str(exc): self._trello_connection_failed(message, True))
+        threading.Thread(target=task, daemon=True).start()
+
+    def _display_trello_connection(self, account_name: str, boards: list[TrelloBoard]) -> None:
+        self.trello_connection_status.configure(text=f"● Conectado como {account_name}", text_color=UI["success"])
+        self.trello_connect_button.configure(state="normal", text="TROCAR CONTA")
+        self.trello_disconnect_button.configure(state="normal")
+        self._trello_boards = {board.name: board.board_id for board in boards}
+        if not boards:
+            self.trello_board_menu.configure(values=["Nenhum quadro aberto"], state="disabled")
+            self.trello_board_menu.set("Nenhum quadro aberto"); return
+        names = list(self._trello_boards)
+        self.trello_board_menu.configure(values=names, state="normal")
+        selected_id = get_secret("TRELLO_BOARD_ID", self.db.get_setting("TRELLO_BOARD_ID"))
+        selected_name = next((name for name, board_id in self._trello_boards.items() if board_id == selected_id), names[0])
+        self.trello_board_menu.set(selected_name)
+        self._select_trello_board(selected_name)
+
+    def _trello_connection_failed(self, message: str, show_dialog: bool = False) -> None:
+        self.trello_connection_status.configure(text=message, text_color=UI["error"])
+        self.trello_connect_button.configure(state="normal", text="CONECTAR AO TRELLO")
+        self.trello_disconnect_button.configure(state="disabled")
+        if show_dialog: self._show_error("Conexão com Trello", message)
+
+    def _select_trello_board(self, name: str) -> None:
+        board_id = getattr(self, "_trello_boards", {}).get(name)
+        if not board_id: return
+        try:
+            set_secret("TRELLO_BOARD_ID", board_id); self.db.delete_setting("TRELLO_BOARD_ID"); os.environ["TRELLO_BOARD_ID"] = board_id
+        except Exception as exc: self._show_error("Trello", str(exc))
+
+    def _disconnect_trello(self) -> None:
+        try:
+            for key in ("TRELLO_TOKEN", "TRELLO_BOARD_ID"):
+                set_secret(key, ""); self.db.delete_setting(key); os.environ.pop(key, None)
+        except Exception as exc:
+            self._show_error("Trello", str(exc)); return
+        self.show_settings()
 
     def _month_action_panel(self, frame: ctk.CTkFrame, button_text: str, action):
         panel = ctk.CTkFrame(frame, fg_color=UI["surface"], corner_radius=10, border_width=1, border_color=UI["border"])
@@ -1274,7 +1344,11 @@ class ContentPlannerApp(ctk.CTk):
         def task() -> None:
             created: dict[int, str] = {}
             try:
-                settings = {key: get_secret(key, self.db.get_setting(key)) for key in ("TRELLO_API_KEY", "TRELLO_TOKEN", "TRELLO_BOARD_ID")}
+                settings = {
+                    "TRELLO_API_KEY": get_trello_app_key(),
+                    "TRELLO_TOKEN": get_secret("TRELLO_TOKEN", self.db.get_setting("TRELLO_TOKEN")),
+                    "TRELLO_BOARD_ID": get_secret("TRELLO_BOARD_ID", self.db.get_setting("TRELLO_BOARD_ID")),
+                }
                 api = TrelloAPI(TrelloConfig.from_environment(settings))
                 list_setting = f"TRELLO_LIST_{client.id}_{year}_{month}"
                 list_id = self.db.get_setting(list_setting)

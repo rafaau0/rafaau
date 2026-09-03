@@ -67,7 +67,19 @@ Para distribuir os recursos de vídeo sem exigir configuração manual, coloque 
 
 ## Trello
 
-Em **Configurações**, informe a chave da API, token e ID do quadro. As credenciais são salvas no cofre do Windows, separadas do banco local.
+Em **Configurações**, o usuário clica em **Conectar ao Trello**, autoriza o Neiva Planner no navegador e escolhe o quadro pelo nome. O token e o ID do quadro são salvos no cofre do Windows, separados do banco local; o programa nunca recebe a senha do usuário.
+
+### Preparar o login do Trello para distribuição
+
+Esta configuração é feita uma única vez pelo responsável pelo Neiva Planner, não pelo cliente:
+
+1. Crie ou abra o Power-Up do Neiva Planner em `https://trello.com/apps/admin` e gere a API Key.
+2. Nas origens permitidas da chave, adicione `http://localhost:8765`.
+3. Copie `assets\trello_app.example.json` para `assets\trello_app.json`.
+4. Substitua o valor de `api_key` pela chave pública do Power-Up.
+5. Gere novamente o executável. O arquivo real é ignorado pelo Git e incorporado somente ao build.
+
+Também é possível definir `TRELLO_APP_KEY` no ambiente de build. A chave do aplicativo é pública; o token individual de cada usuário permanece secreto no cofre do Windows.
 
 O sistema só envia ao Trello conteúdos que ainda não possuem um card vinculado. Assim, repetir o envio não cria cards duplicados.
 

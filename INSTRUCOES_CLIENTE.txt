@@ -14,5 +14,6 @@ BACKUP
 Copie periodicamente %LOCALAPPDATA%\NeivaPlanner\database\content_planner.db para um local seguro.
 
 TRELLO
-Na tela Configurações, informe TRELLO_API_KEY, TRELLO_TOKEN e TRELLO_BOARD_ID e clique em Salvar credenciais.
+Na tela Configurações, clique em Conectar ao Trello, autorize o acesso no navegador e escolha o quadro pelo nome.
+Sua senha não é informada ao Neiva Planner, e você pode desconectar a conta quando quiser.
 Os conteúdos enviados uma vez não serão duplicados em novos envios.
