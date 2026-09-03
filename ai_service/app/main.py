@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 import os
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -15,6 +16,9 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint, create_engine, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
+
+
+logger = logging.getLogger(__name__)
 
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./neiva_ai.db")
@@ -260,7 +264,24 @@ def create_checkout(payload: CheckoutRequest) -> dict[str, str]:
     except requests.RequestException as exc:
         raise HTTPException(status_code=503, detail="Não foi possível abrir o checkout.") from exc
     if not response.ok:
-        raise HTTPException(status_code=502, detail="O Asaas não aceitou o checkout de teste.")
+        # O Asaas não devolve segredos neste campo. Registrar somente a
+        # descrição ajuda a corrigir a configuração do Sandbox sem expor a
+        # chave de API nem os cabeçalhos da requisição.
+        message = "O Asaas recusou esta solicitação."
+        try:
+            error_data = response.json()
+            errors = error_data.get("errors", []) if isinstance(error_data, dict) else []
+            descriptions = [
+                str(item.get("description", "")).strip()
+                for item in errors
+                if isinstance(item, dict) and item.get("description")
+            ]
+            if descriptions:
+                message = " ".join(descriptions)[:500]
+        except (ValueError, TypeError):
+            pass
+        logger.warning("Asaas checkout recusado: status=%s motivo=%s", response.status_code, message)
+        raise HTTPException(status_code=502, detail=f"Asaas Sandbox: {message}")
     checkout_id = response.json().get("id")
     if not checkout_id:
         raise HTTPException(status_code=502, detail="O Asaas não retornou um checkout.")
