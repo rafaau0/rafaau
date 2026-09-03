@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 
 import requests
 from fastapi import Depends, FastAPI, Header, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint, create_engine, select
@@ -119,6 +120,10 @@ class RegisterSubscriptionRequest(BaseModel):
     plan_code: str
 
 
+class CheckoutRequest(BaseModel):
+    plan_code: str
+
+
 PLANS = {
     "essencial": {"name": "Neiva Essencial", "monthly_price": 49.90, "ai_credits": 20, "devices": 2},
     "pro": {"name": "Neiva Pro", "monthly_price": 89.90, "ai_credits": 80, "devices": 2},
@@ -215,6 +220,7 @@ def ask_openai(payload: CutsRequest) -> list[dict]:
 
 
 app = FastAPI(title="Neiva AI API", version="1.0.0")
+app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"], allow_methods=["POST", "GET"], allow_headers=["*"])
 
 
 @app.on_event("startup")
@@ -231,6 +237,33 @@ def health() -> dict[str, str]:
 def list_plans() -> dict:
     """Planos públicos; preços ficam centralizados no servidor."""
     return {"plans": [{"code": code, **details} for code, details in PLANS.items()]}
+
+
+@app.post("/v1/billing/checkout")
+def create_checkout(payload: CheckoutRequest) -> dict[str, str]:
+    """Cria uma sessão de checkout recorrente hospedada pelo Asaas."""
+    plan = PLANS.get(payload.plan_code)
+    api_key = os.getenv("ASAAS_API_KEY", "")
+    base_url = os.getenv("ASAAS_BASE_URL", "").rstrip("/")
+    if not plan or not api_key or not base_url:
+        raise HTTPException(status_code=503, detail="Checkout ainda não configurado.")
+    tomorrow = (datetime.now(timezone.utc) + timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
+    callback_base = os.getenv("SITE_URL", "http://localhost:3000").rstrip("/")
+    body = {"billingTypes": ["PIX", "CREDIT_CARD"], "chargeTypes": ["RECURRENT"], "minutesToExpire": 60,
+            "callback": {"successUrl": f"{callback_base}/?checkout=success", "cancelUrl": f"{callback_base}/?checkout=cancel", "expiredUrl": f"{callback_base}/?checkout=expired"},
+            "items": [{"name": plan["name"], "description": "Assinatura Neiva Planner", "quantity": 1, "value": plan["monthly_price"]}],
+            "subscription": {"cycle": "MONTHLY", "nextDueDate": tomorrow}}
+    try:
+        response = requests.post(f"{base_url}/checkouts", headers={"access_token": api_key, "Content-Type": "application/json", "User-Agent": "NeivaPlanner/1.0"}, json=body, timeout=30)
+    except requests.RequestException as exc:
+        raise HTTPException(status_code=503, detail="Não foi possível abrir o checkout.") from exc
+    if not response.ok:
+        raise HTTPException(status_code=502, detail="O Asaas não aceitou o checkout de teste.")
+    checkout_id = response.json().get("id")
+    if not checkout_id:
+        raise HTTPException(status_code=502, detail="O Asaas não retornou um checkout.")
+    checkout_host = "https://sandbox.asaas.com" if "sandbox" in base_url else "https://asaas.com"
+    return {"checkout_url": f"{checkout_host}/checkoutSession/show?id={checkout_id}"}
 
 
 @app.post("/v1/cuts")
