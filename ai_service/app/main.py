@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 import requests
 from fastapi import Depends, FastAPI, Header, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint, create_engine, select
@@ -237,6 +238,18 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/v1/billing/return", response_class=HTMLResponse, include_in_schema=False)
+def checkout_return(checkout: str = "") -> str:
+    """Página pública temporária para retornos do Checkout antes do site ser publicado."""
+    messages = {
+        "success": "Pagamento enviado com sucesso. Você receberá a confirmação da sua licença após a aprovação.",
+        "cancel": "Checkout cancelado. Você pode voltar ao Neiva Planner e tentar novamente quando quiser.",
+        "expired": "Este checkout expirou. Volte ao Neiva Planner para gerar um novo link.",
+    }
+    message = messages.get(checkout, "Retorno de checkout recebido.")
+    return f"<main><h1>Neiva Planner</h1><p>{message}</p></main>"
+
+
 @app.get("/v1/billing/plans")
 def list_plans() -> dict:
     """Planos públicos; preços ficam centralizados no servidor."""
@@ -252,11 +265,24 @@ def create_checkout(payload: CheckoutRequest) -> dict[str, str]:
     if not plan or not api_key or not base_url:
         raise HTTPException(status_code=503, detail="Checkout ainda não configurado.")
     tomorrow = (datetime.now(timezone.utc) + timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
-    callback_base = os.getenv("SITE_URL", "http://localhost:3000").rstrip("/")
+    callback_base = os.getenv("SITE_URL", "").rstrip("/")
+    if not callback_base or "localhost" in callback_base.lower() or "127.0.0.1" in callback_base:
+        callback_base = "https://neiva-ai-api.onrender.com/v1/billing/return"
+        callback_urls = {
+            "successUrl": f"{callback_base}?checkout=success",
+            "cancelUrl": f"{callback_base}?checkout=cancel",
+            "expiredUrl": f"{callback_base}?checkout=expired",
+        }
+    else:
+        callback_urls = {
+            "successUrl": f"{callback_base}/?checkout=success",
+            "cancelUrl": f"{callback_base}/?checkout=cancel",
+            "expiredUrl": f"{callback_base}/?checkout=expired",
+        }
     # Assinatura recorrente no Checkout Asaas usa cartão; Pix recorrente é um
     # fluxo separado de Pix Automático e será integrado como forma adicional.
     body = {"billingTypes": ["CREDIT_CARD"], "chargeTypes": ["RECURRENT"], "minutesToExpire": 60,
-            "callback": {"successUrl": f"{callback_base}/?checkout=success", "cancelUrl": f"{callback_base}/?checkout=cancel", "expiredUrl": f"{callback_base}/?checkout=expired"},
+            "callback": callback_urls,
             "items": [{"name": plan["name"], "description": "Assinatura Neiva Planner", "quantity": 1, "value": plan["monthly_price"]}],
             "subscription": {"cycle": "MONTHLY", "nextDueDate": tomorrow}}
     try:
