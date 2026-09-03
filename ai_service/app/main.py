@@ -6,7 +6,7 @@ import hmac
 import json
 import os
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import requests
 from fastapi import Depends, FastAPI, Header, HTTPException, status
@@ -66,6 +66,26 @@ class DeviceToken(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
+class Subscription(Base):
+    __tablename__ = "subscriptions"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), index=True)
+    provider: Mapped[str] = mapped_column(String(30), default="asaas")
+    provider_subscription_id: Mapped[str] = mapped_column(String(120), unique=True)
+    plan_code: Mapped[str] = mapped_column(String(30))
+    status: Mapped[str] = mapped_column(String(30), default="pending")
+    current_period_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class ProcessedWebhook(Base):
+    __tablename__ = "processed_webhooks"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    provider: Mapped[str] = mapped_column(String(30))
+    event_id: Mapped[str] = mapped_column(String(160), unique=True)
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
 class SubtitleInput(BaseModel):
     start: float = Field(ge=0)
     end: float = Field(gt=0)
@@ -91,6 +111,18 @@ class CreateClientRequest(BaseModel):
 
 class ActivateRequest(BaseModel):
     activation_code: str = Field(min_length=12, max_length=200)
+
+
+class RegisterSubscriptionRequest(BaseModel):
+    client_id: int = Field(gt=0)
+    provider_subscription_id: str = Field(min_length=3, max_length=120)
+    plan_code: str
+
+
+PLANS = {
+    "essencial": {"name": "Neiva Essencial", "monthly_price": 49.90, "ai_credits": 20, "devices": 2},
+    "pro": {"name": "Neiva Pro", "monthly_price": 89.90, "ai_credits": 80, "devices": 2},
+}
 
 
 def token_hash(token: str) -> str:
@@ -195,6 +227,12 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/v1/billing/plans")
+def list_plans() -> dict:
+    """Planos públicos; preços ficam centralizados no servidor."""
+    return {"plans": [{"code": code, **details} for code, details in PLANS.items()]}
+
+
 @app.post("/v1/cuts")
 def create_cuts(payload: CutsRequest, client: Client = Depends(current_client), session: Session = Depends(db_session)) -> dict:
     consume_quota(session, client)
@@ -219,6 +257,58 @@ def activate(payload: ActivateRequest, session: Session = Depends(db_session)) -
     activation.used_at = datetime.now(timezone.utc)
     session.commit()
     return {"access_token": raw_token}
+
+
+@app.post("/v1/webhooks/asaas")
+def asaas_webhook(
+    payload: dict,
+    asaas_access_token: str | None = Header(default=None),
+    session: Session = Depends(db_session),
+) -> dict[str, bool]:
+    """Recebe notificações do Asaas e processa cada evento somente uma vez."""
+    expected = os.getenv("ASAAS_WEBHOOK_TOKEN", "")
+    if not expected or not asaas_access_token or not hmac.compare_digest(asaas_access_token, expected):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Webhook não autorizado.")
+    event_id = str(payload.get("id", "")).strip()
+    if not event_id:
+        raise HTTPException(status_code=400, detail="Evento sem identificador.")
+    if session.scalar(select(ProcessedWebhook).where(ProcessedWebhook.event_id == event_id)):
+        return {"ok": True}
+    payment = payload.get("payment") or {}
+    provider_subscription_id = str(payment.get("subscription", "")).strip()
+    event = str(payload.get("event", "")).strip()
+    subscription = session.scalar(select(Subscription).where(Subscription.provider_subscription_id == provider_subscription_id)) if provider_subscription_id else None
+    if subscription:
+        client = session.get(Client, subscription.client_id)
+        if event in {"PAYMENT_CONFIRMED", "PAYMENT_RECEIVED"}:
+            subscription.status = "active"
+            subscription.current_period_end = datetime.now(timezone.utc) + timedelta(days=31)
+            if client:
+                client.active = True
+        elif event == "PAYMENT_OVERDUE":
+            subscription.status = "past_due"
+        elif event in {"PAYMENT_REFUNDED", "PAYMENT_CHARGEBACK_REQUESTED"}:
+            subscription.status = "suspended"
+            if client:
+                client.active = False
+    session.add(ProcessedWebhook(provider="asaas", event_id=event_id))
+    session.commit()
+    return {"ok": True}
+
+
+@app.post("/v1/admin/billing/subscriptions", dependencies=[Depends(require_admin)])
+def register_subscription(payload: RegisterSubscriptionRequest, session: Session = Depends(db_session)) -> dict:
+    """Registra a assinatura criada no Asaas; o webhook define a ativação real."""
+    if payload.plan_code not in PLANS:
+        raise HTTPException(status_code=422, detail="Plano inválido.")
+    if not session.get(Client, payload.client_id):
+        raise HTTPException(status_code=404, detail="Cliente não encontrado.")
+    if session.scalar(select(Subscription).where(Subscription.provider_subscription_id == payload.provider_subscription_id)):
+        raise HTTPException(status_code=409, detail="Assinatura já registrada.")
+    subscription = Subscription(client_id=payload.client_id, provider_subscription_id=payload.provider_subscription_id, plan_code=payload.plan_code)
+    session.add(subscription)
+    session.commit()
+    return {"id": subscription.id, "status": subscription.status, "plan": subscription.plan_code}
 
 
 @app.post("/v1/admin/clients", dependencies=[Depends(require_admin)])
