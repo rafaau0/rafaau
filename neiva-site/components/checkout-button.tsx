@@ -2,7 +2,11 @@
 
 import { FormEvent, useState } from 'react';
 
-const API_URL = 'https://neiva-ai-api.onrender.com';
+const isPreview = typeof window !== 'undefined'
+  && window.location.hostname.endsWith('-neiva-planner-site.rafaau0.workers.dev');
+const API_URL = isPreview
+  ? 'https://neiva-ai-api-staging.onrender.com'
+  : 'https://neiva-ai-api.onrender.com';
 
 export function CheckoutButton({ plan, featured }: { plan: string; featured?: boolean }) {
   const [open, setOpen] = useState(false);

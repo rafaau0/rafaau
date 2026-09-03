@@ -290,6 +290,10 @@ app.add_middleware(
         "http://127.0.0.1:3000",
         "https://neiva-planner-site.rafaau0.workers.dev",
     ],
+    # Somente o ambiente de testes define esta variável. Assim, links de
+    # prévia da Cloudflare podem acessar a API de staging sem abrir a API
+    # de produção para origens temporárias.
+    allow_origin_regex=os.getenv("CORS_ORIGIN_REGEX") or None,
     allow_methods=["POST", "GET"],
     allow_headers=["*"],
 )
