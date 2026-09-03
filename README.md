@@ -42,7 +42,7 @@ python -m content_planner
 
 ## Configuração e segurança
 
-- Para **Estúdio de Vídeo > Cortes** com IA, crie uma chave na OpenAI, configure o faturamento da conta e informe-a em **Configurações > OPENAI_API_KEY**. A chave é salva no cofre do Windows e nunca deve ser adicionada ao Git, compartilhada por mensagem ou colocada no código.
+- Para **Estúdio de Vídeo > Cortes** com IA, configure em **Configurações > IA NEIVA** a URL da API Neiva e a chave de acesso fornecida ao cliente. A chave OpenAI da empresa fica exclusivamente no servidor e nunca é distribuída no aplicativo.
 - A transcrição é local. Quando a opção **Usar IA OpenAI** estiver ativa, somente a transcrição com timestamps é enviada à API para selecionar os cortes; esse uso pode gerar custo.
 - Instale o [FFmpeg](https://ffmpeg.org/) e deixe `ffmpeg` e `ffprobe` disponíveis no `PATH` para download/transcrição de vídeo.
 - Para o módulo de encartes, instale o Adobe Photoshop. O projeto já contém toda a automação de PSD necessária.

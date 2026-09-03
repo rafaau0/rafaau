@@ -696,13 +696,13 @@ class ContentPlannerApp(ctk.CTk):
         actions = ctk.CTkFrame(frame, fg_color="transparent"); actions.grid(row=1, column=0, sticky="ew", pady=(0, 10))
         ctk.CTkButton(actions, text="Colar", width=90, fg_color=UI["secondary"], hover_color=UI["secondary_hover"], text_color=UI["text"], command=self._paste_clip_url).pack(side="left")
         self.clip_model = ctk.StringVar(value="base")
-        self.clip_use_ai = ctk.BooleanVar(value=bool(get_secret("OPENAI_API_KEY")))
+        self.clip_use_ai = ctk.BooleanVar(value=bool(get_secret("NEIVA_AI_API_URL")) and bool(get_secret("NEIVA_AI_CLIENT_TOKEN")))
         ctk.CTkLabel(actions, text="Modelo de transcrição", text_color=UI["muted"]).pack(side="left", padx=(18, 7))
         ctk.CTkOptionMenu(actions, variable=self.clip_model, values=["tiny", "base", "small", "medium"], width=120).pack(side="left")
-        ctk.CTkCheckBox(actions, text="Usar IA OpenAI", variable=self.clip_use_ai).pack(side="left", padx=14)
+        ctk.CTkCheckBox(actions, text="Usar IA Neiva", variable=self.clip_use_ai).pack(side="left", padx=14)
         self.clip_analyze_button = ctk.CTkButton(actions, text="ENCONTRAR CORTES", command=self._start_clip_analysis, fg_color=UI["accent"])
         self.clip_analyze_button.pack(side="right")
-        ctk.CTkLabel(frame, text="Use somente vídeos para os quais você possui direito ou autorização. Com IA OpenAI marcada, somente a transcrição é enviada para análise e pode gerar custo na API.", text_color=UI["muted"], justify="left", wraplength=900).grid(row=2, column=0, sticky="w", pady=(0, 10))
+        ctk.CTkLabel(frame, text="Use somente vídeos para os quais você possui direito ou autorização. Com IA Neiva marcada, somente a transcrição é enviada para análise.", text_color=UI["muted"], justify="left", wraplength=900).grid(row=2, column=0, sticky="w", pady=(0, 10))
         self.clip_status = ctk.CTkLabel(frame, text="Pronto para analisar.", text_color=UI["text"]); self.clip_status.grid(row=3, column=0, sticky="w")
         self.clip_progress = ctk.CTkProgressBar(frame); self.clip_progress.grid(row=4, column=0, sticky="ew", pady=(5, 13)); self.clip_progress.set(0)
         self.clip_table = ttk.Treeview(frame, style="Neiva.Treeview", columns=("start", "end", "score", "title"), show="headings", height=9)
@@ -733,7 +733,8 @@ class ContentPlannerApp(ctk.CTk):
             self._show_warning("Encontrar Cortes", "Carregue um vídeo no Estúdio ou informe um link do YouTube."); return
         model_name = self.clip_model.get()
         use_ai = self.clip_use_ai.get()
-        api_key = get_secret("OPENAI_API_KEY") if use_ai else ""
+        api_url = get_secret("NEIVA_AI_API_URL") if use_ai else ""
+        access_token = get_secret("NEIVA_AI_CLIENT_TOKEN") if use_ai else ""
         self.clip_analyze_button.configure(state="disabled"); self.clip_progress.set(0)
         self.clip_table.delete(*self.clip_table.get_children()); self.clip_detail.configure(text="Baixando o vídeo e analisando a fala…")
         def download_progress(data) -> None:
@@ -756,7 +757,7 @@ class ContentPlannerApp(ctk.CTk):
                     subtitles = self.video_project.subtitles or transcribe(video, model_name, 40, transcription_progress)
                 if use_ai:
                     self._clip_progress_update("IA analisando contexto e sugerindo cortes…", 94)
-                    suggestions = analyze_cuts(subtitles, api_key)
+                    suggestions = analyze_cuts(subtitles, api_url, access_token)
                 else:
                     self._clip_progress_update("Selecionando trechos promissores…", 94)
                     suggestions = find_suggestions(subtitles)
@@ -998,26 +999,29 @@ class ContentPlannerApp(ctk.CTk):
         self.trello_disconnect_button = ctk.CTkButton(trello_actions, text="Desconectar", fg_color=UI["secondary"], hover_color=UI["secondary_hover"], text_color=UI["text"], command=self._disconnect_trello, state="disabled")
         self.trello_disconnect_button.pack(side="left", padx=8)
 
-        openai_box = ctk.CTkFrame(frame, fg_color=UI["surface"], corner_radius=10, border_width=1, border_color=UI["border"])
-        openai_box.grid(row=1, column=0, sticky="ew", pady=(14, 0)); openai_box.grid_columnconfigure(1, weight=1)
-        ctk.CTkLabel(openai_box, text="OPENAI", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, sticky="w", padx=16, pady=16)
-        openai_entry = ctk.CTkEntry(openai_box, show="●")
-        openai_entry.insert(0, get_secret("OPENAI_API_KEY", self.db.get_setting("OPENAI_API_KEY")))
-        openai_entry.grid(row=0, column=1, sticky="ew", padx=16, pady=16)
+        ai_box = ctk.CTkFrame(frame, fg_color=UI["surface"], corner_radius=10, border_width=1, border_color=UI["border"])
+        ai_box.grid(row=1, column=0, sticky="ew", pady=(14, 0)); ai_box.grid_columnconfigure(1, weight=1)
+        ctk.CTkLabel(ai_box, text="IA NEIVA", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, sticky="w", padx=16, pady=(16, 8))
+        ctk.CTkLabel(ai_box, text="URL da IA").grid(row=1, column=0, sticky="w", padx=16, pady=8)
+        ai_url_entry = ctk.CTkEntry(ai_box, placeholder_text="https://sua-api.onrender.com")
+        ai_url_entry.insert(0, get_secret("NEIVA_AI_API_URL"))
+        ai_url_entry.grid(row=1, column=1, sticky="ew", padx=16, pady=8)
+        ctk.CTkLabel(ai_box, text="Chave de acesso").grid(row=2, column=0, sticky="w", padx=16, pady=8)
+        ai_token_entry = ctk.CTkEntry(ai_box, show="●")
+        ai_token_entry.insert(0, get_secret("NEIVA_AI_CLIENT_TOKEN"))
+        ai_token_entry.grid(row=2, column=1, sticky="ew", padx=16, pady=8)
 
-        def save_openai() -> None:
+        def save_ai_settings() -> None:
             try:
-                value = openai_entry.get().strip(); set_secret("OPENAI_API_KEY", value)
-                self.db.delete_setting("OPENAI_API_KEY")
-                if value: os.environ["OPENAI_API_KEY"] = value
-                else: os.environ.pop("OPENAI_API_KEY", None)
-                self._show_info("OpenAI", "Chave salva no cofre do Windows.")
-            except Exception as exc: self._show_error("OpenAI", str(exc))
-        ctk.CTkButton(openai_box, text="Salvar chave", command=save_openai).grid(row=1, column=1, sticky="e", padx=16, pady=(0, 16))
+                set_secret("NEIVA_AI_API_URL", ai_url_entry.get().strip().rstrip("/"))
+                set_secret("NEIVA_AI_CLIENT_TOKEN", ai_token_entry.get().strip())
+                self._show_info("IA Neiva", "Configuração salva no cofre do Windows.")
+            except Exception as exc: self._show_error("IA Neiva", str(exc))
+        ctk.CTkButton(ai_box, text="Salvar configuração", command=save_ai_settings).grid(row=3, column=1, sticky="e", padx=16, pady=(0, 16))
 
         ctk.CTkLabel(
             frame,
-            text=f"Banco: {self.db.db_path}\nArquivos gerados: {ROOT_DIR / 'exports'}\nA chave OpenAI fica no cofre do Windows; nunca a envie por mensagens ou a inclua no GitHub.",
+            text=f"Banco: {self.db.db_path}\nArquivos gerados: {ROOT_DIR / 'exports'}\nA chave de acesso da IA fica no cofre do Windows. A chave da OpenAI permanece somente no servidor Neiva.",
             text_color=UI["muted"],
             justify="left",
         ).grid(row=2, column=0, sticky="w", pady=(14, 0))

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -23,15 +22,15 @@ class RegressionTests(unittest.TestCase):
             ]
         }
         response = Mock(ok=True)
-        response.json.return_value = {"output_text": json.dumps(payload)}
+        response.json.return_value = payload
         with patch("content_planner.clip_ai.requests.post", return_value=response):
-            result = analyze_cuts([Subtitle(0, 100, "fala")], "chave", limit=2)
+            result = analyze_cuts([Subtitle(0, 100, "fala")], "https://api.neiva.test", "chave", limit=2)
         self.assertEqual([(item.start, item.end) for item in result], [(0, 30), (50, 80)])
         self.assertEqual([item.score for item in result], [100, 0])
 
     def test_ai_zero_limit_does_not_make_a_request(self) -> None:
         with patch("content_planner.clip_ai.requests.post") as request:
-            self.assertEqual(analyze_cuts([Subtitle(0, 100, "fala")], "chave", limit=0), [])
+            self.assertEqual(analyze_cuts([Subtitle(0, 100, "fala")], "https://api.neiva.test", "chave", limit=0), [])
         request.assert_not_called()
 
     def test_caption_export_creates_parent_folder(self) -> None:
