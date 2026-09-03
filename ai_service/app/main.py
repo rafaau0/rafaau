@@ -12,7 +12,7 @@ import requests
 from fastapi import Depends, FastAPI, Header, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import Boolean, DateTime, Integer, String, UniqueConstraint, create_engine, select
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint, create_engine, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
 
@@ -50,6 +50,22 @@ class MonthlyUsage(Base):
     requests_count: Mapped[int] = mapped_column(Integer, default=0)
 
 
+class ActivationCode(Base):
+    __tablename__ = "activation_codes"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), unique=True, index=True)
+    code_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class DeviceToken(Base):
+    __tablename__ = "device_tokens"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
 class SubtitleInput(BaseModel):
     start: float = Field(ge=0)
     end: float = Field(gt=0)
@@ -71,6 +87,10 @@ class CutsRequest(BaseModel):
 class CreateClientRequest(BaseModel):
     name: str = Field(min_length=2, max_length=120)
     monthly_limit: int = Field(default=30, ge=1, le=10000)
+
+
+class ActivateRequest(BaseModel):
+    activation_code: str = Field(min_length=12, max_length=200)
 
 
 def token_hash(token: str) -> str:
@@ -96,6 +116,9 @@ def current_client(
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Chave de acesso ausente.")
     client = session.scalar(select(Client).where(Client.token_hash == token_hash(token)))
+    if client is None:
+        device_token = session.scalar(select(DeviceToken).where(DeviceToken.token_hash == token_hash(token)))
+        client = session.get(Client, device_token.client_id) if device_token else None
     if not client or not client.active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Chave de acesso inválida.")
     return client
@@ -183,12 +206,30 @@ def create_cuts(payload: CutsRequest, client: Client = Depends(current_client), 
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
+@app.post("/v1/activate")
+def activate(payload: ActivateRequest, session: Session = Depends(db_session)) -> dict:
+    activation = session.scalar(select(ActivationCode).where(ActivationCode.code_hash == token_hash(payload.activation_code)))
+    if not activation or activation.used_at is not None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Código de ativação inválido ou já utilizado.")
+    client = session.get(Client, activation.client_id)
+    if not client or not client.active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Esta licença não está ativa.")
+    raw_token = f"neiva_{secrets.token_urlsafe(32)}"
+    session.add(DeviceToken(client_id=client.id, token_hash=token_hash(raw_token)))
+    activation.used_at = datetime.now(timezone.utc)
+    session.commit()
+    return {"access_token": raw_token}
+
+
 @app.post("/v1/admin/clients", dependencies=[Depends(require_admin)])
 def create_client(payload: CreateClientRequest, session: Session = Depends(db_session)) -> dict:
     if session.scalar(select(Client).where(Client.name == payload.name)):
         raise HTTPException(status_code=409, detail="Já existe um cliente com esse nome.")
     raw_token = f"neiva_{secrets.token_urlsafe(32)}"
+    activation_code = f"NEIVA-{secrets.token_urlsafe(12).upper()}"
     client = Client(name=payload.name, token_hash=token_hash(raw_token), monthly_limit=payload.monthly_limit)
     session.add(client)
+    session.flush()
+    session.add(ActivationCode(client_id=client.id, code_hash=token_hash(activation_code)))
     session.commit()
-    return {"id": client.id, "name": client.name, "monthly_limit": client.monthly_limit, "access_token": raw_token}
+    return {"id": client.id, "name": client.name, "monthly_limit": client.monthly_limit, "activation_code": activation_code}

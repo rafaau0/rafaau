@@ -11,6 +11,7 @@ from pathlib import Path
 from tkinter import DoubleVar, IntVar, TclError, filedialog, messagebox, ttk
 
 import customtkinter as ctk
+import requests
 from PIL import Image
 
 from .database import Client, Database, Post
@@ -29,6 +30,7 @@ from .silence_editor import SilenceSettings, apply_cuts, detect_silences, output
 CONTENT_TYPES = ["Reels", "Story", "Carrossel", "Feed", "Promoção"]
 PLATFORMS = ["Instagram", "Facebook", "TikTok", "LinkedIn", "YouTube", "Pinterest"]
 STATUSES = ["Pendente", "Em andamento", "Concluído"]
+NEIVA_AI_API_URL = "https://neiva-ai-api.onrender.com"
 MONTHS = [
     "Janeiro",
     "Fevereiro",
@@ -696,7 +698,7 @@ class ContentPlannerApp(ctk.CTk):
         actions = ctk.CTkFrame(frame, fg_color="transparent"); actions.grid(row=1, column=0, sticky="ew", pady=(0, 10))
         ctk.CTkButton(actions, text="Colar", width=90, fg_color=UI["secondary"], hover_color=UI["secondary_hover"], text_color=UI["text"], command=self._paste_clip_url).pack(side="left")
         self.clip_model = ctk.StringVar(value="base")
-        self.clip_use_ai = ctk.BooleanVar(value=bool(get_secret("NEIVA_AI_API_URL")) and bool(get_secret("NEIVA_AI_CLIENT_TOKEN")))
+        self.clip_use_ai = ctk.BooleanVar(value=bool(get_secret("NEIVA_AI_CLIENT_TOKEN")))
         ctk.CTkLabel(actions, text="Modelo de transcrição", text_color=UI["muted"]).pack(side="left", padx=(18, 7))
         ctk.CTkOptionMenu(actions, variable=self.clip_model, values=["tiny", "base", "small", "medium"], width=120).pack(side="left")
         ctk.CTkCheckBox(actions, text="Usar IA Neiva", variable=self.clip_use_ai).pack(side="left", padx=14)
@@ -733,7 +735,7 @@ class ContentPlannerApp(ctk.CTk):
             self._show_warning("Encontrar Cortes", "Carregue um vídeo no Estúdio ou informe um link do YouTube."); return
         model_name = self.clip_model.get()
         use_ai = self.clip_use_ai.get()
-        api_url = get_secret("NEIVA_AI_API_URL") if use_ai else ""
+        api_url = NEIVA_AI_API_URL if use_ai else ""
         access_token = get_secret("NEIVA_AI_CLIENT_TOKEN") if use_ai else ""
         self.clip_analyze_button.configure(state="disabled"); self.clip_progress.set(0)
         self.clip_table.delete(*self.clip_table.get_children()); self.clip_detail.configure(text="Baixando o vídeo e analisando a fala…")
@@ -1002,26 +1004,39 @@ class ContentPlannerApp(ctk.CTk):
         ai_box = ctk.CTkFrame(frame, fg_color=UI["surface"], corner_radius=10, border_width=1, border_color=UI["border"])
         ai_box.grid(row=1, column=0, sticky="ew", pady=(14, 0)); ai_box.grid_columnconfigure(1, weight=1)
         ctk.CTkLabel(ai_box, text="IA NEIVA", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, sticky="w", padx=16, pady=(16, 8))
-        ctk.CTkLabel(ai_box, text="URL da IA").grid(row=1, column=0, sticky="w", padx=16, pady=8)
-        ai_url_entry = ctk.CTkEntry(ai_box, placeholder_text="https://sua-api.onrender.com")
-        ai_url_entry.insert(0, get_secret("NEIVA_AI_API_URL"))
-        ai_url_entry.grid(row=1, column=1, sticky="ew", padx=16, pady=8)
-        ctk.CTkLabel(ai_box, text="Chave de acesso").grid(row=2, column=0, sticky="w", padx=16, pady=8)
-        ai_token_entry = ctk.CTkEntry(ai_box, show="●")
-        ai_token_entry.insert(0, get_secret("NEIVA_AI_CLIENT_TOKEN"))
-        ai_token_entry.grid(row=2, column=1, sticky="ew", padx=16, pady=8)
+        activated = bool(get_secret("NEIVA_AI_CLIENT_TOKEN"))
+        self.ai_activation_status = ctk.CTkLabel(ai_box, text="IA ativada neste computador." if activated else "Ative sua licença para usar a IA.", text_color=UI["success"] if activated else UI["muted"])
+        self.ai_activation_status.grid(row=1, column=0, columnspan=2, sticky="w", padx=16, pady=8)
+        ctk.CTkLabel(ai_box, text="Código de ativação").grid(row=2, column=0, sticky="w", padx=16, pady=8)
+        activation_entry = ctk.CTkEntry(ai_box, placeholder_text="Ex.: NEIVA-XXXX", show="●")
+        activation_entry.grid(row=2, column=1, sticky="ew", padx=16, pady=8)
 
-        def save_ai_settings() -> None:
-            try:
-                set_secret("NEIVA_AI_API_URL", ai_url_entry.get().strip().rstrip("/"))
-                set_secret("NEIVA_AI_CLIENT_TOKEN", ai_token_entry.get().strip())
-                self._show_info("IA Neiva", "Configuração salva no cofre do Windows.")
-            except Exception as exc: self._show_error("IA Neiva", str(exc))
-        ctk.CTkButton(ai_box, text="Salvar configuração", command=save_ai_settings).grid(row=3, column=1, sticky="e", padx=16, pady=(0, 16))
+        def activate_ai() -> None:
+            code = activation_entry.get().strip()
+            if not code:
+                self._show_warning("IA Neiva", "Informe o código de ativação fornecido pela Neiva.")
+                return
+            activate_button.configure(state="disabled", text="ATIVANDO...")
+            def task() -> None:
+                try:
+                    response = requests.post(f"{NEIVA_AI_API_URL}/v1/activate", json={"activation_code": code}, timeout=30)
+                    if not response.ok:
+                        try: message = response.json().get("detail", response.text)
+                        except ValueError: message = response.text
+                        raise RuntimeError(message)
+                    set_secret("NEIVA_AI_CLIENT_TOKEN", response.json()["access_token"])
+                    self.after(0, lambda: (self.ai_activation_status.configure(text="IA ativada neste computador.", text_color=UI["success"]), activation_entry.delete(0, "end"), self._show_info("IA Neiva", "Licença ativada com sucesso.")))
+                except Exception as exc:
+                    self.after(0, lambda message=str(exc): self._show_error("Ativar IA Neiva", message))
+                finally:
+                    self.after(0, lambda: activate_button.configure(state="normal", text="ATIVAR IA"))
+            threading.Thread(target=task, daemon=True).start()
+        activate_button = ctk.CTkButton(ai_box, text="ATIVAR IA", command=activate_ai)
+        activate_button.grid(row=3, column=1, sticky="e", padx=16, pady=(0, 16))
 
         ctk.CTkLabel(
             frame,
-            text=f"Banco: {self.db.db_path}\nArquivos gerados: {ROOT_DIR / 'exports'}\nA chave de acesso da IA fica no cofre do Windows. A chave da OpenAI permanece somente no servidor Neiva.",
+            text=f"Banco: {self.db.db_path}\nArquivos gerados: {ROOT_DIR / 'exports'}\nA chave OpenAI permanece somente no servidor Neiva. Clientes recebem apenas um código de ativação.",
             text_color=UI["muted"],
             justify="left",
         ).grid(row=2, column=0, sticky="w", pady=(14, 0))
