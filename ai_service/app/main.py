@@ -249,7 +249,9 @@ def create_checkout(payload: CheckoutRequest) -> dict[str, str]:
         raise HTTPException(status_code=503, detail="Checkout ainda não configurado.")
     tomorrow = (datetime.now(timezone.utc) + timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
     callback_base = os.getenv("SITE_URL", "http://localhost:3000").rstrip("/")
-    body = {"billingTypes": ["PIX", "CREDIT_CARD"], "chargeTypes": ["RECURRENT"], "minutesToExpire": 60,
+    # Assinatura recorrente no Checkout Asaas usa cartão; Pix recorrente é um
+    # fluxo separado de Pix Automático e será integrado como forma adicional.
+    body = {"billingTypes": ["CREDIT_CARD"], "chargeTypes": ["RECURRENT"], "minutesToExpire": 60,
             "callback": {"successUrl": f"{callback_base}/?checkout=success", "cancelUrl": f"{callback_base}/?checkout=cancel", "expiredUrl": f"{callback_base}/?checkout=expired"},
             "items": [{"name": plan["name"], "description": "Assinatura Neiva Planner", "quantity": 1, "value": plan["monthly_price"]}],
             "subscription": {"cycle": "MONTHLY", "nextDueDate": tomorrow}}
