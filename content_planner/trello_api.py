@@ -48,6 +48,40 @@ class TrelloAPI:
         response.raise_for_status()
         return str(response.json()["id"])
 
+    def find_list(self, name: str) -> str | None:
+        response = requests.get(
+            f"{TRELLO_API_URL}/boards/{self.config.board_id}/lists",
+            params={**self._auth_params(), "filter": "open", "fields": "id,name"},
+            timeout=20,
+        )
+        response.raise_for_status()
+        for item in response.json():
+            if str(item.get("name", "")) == name:
+                return str(item["id"])
+        return None
+
+    def get_or_create_list(self, name: str) -> str:
+        return self.find_list(name) or self.create_list(name)
+
+    @staticmethod
+    def _post_marker(post: Post) -> str:
+        if post.id is None:
+            raise ValueError("Post sem identificador local.")
+        return f"<!-- neiva-planner-post:{post.id} -->"
+
+    def find_card_for_post(self, post: Post) -> str | None:
+        marker = self._post_marker(post)
+        response = requests.get(
+            f"{TRELLO_API_URL}/boards/{self.config.board_id}/cards",
+            params={**self._auth_params(), "filter": "open", "fields": "id,desc"},
+            timeout=20,
+        )
+        response.raise_for_status()
+        for item in response.json():
+            if marker in str(item.get("desc", "")):
+                return str(item["id"])
+        return None
+
     def create_card(self, list_id: str, post: Post) -> str:
         payload: dict[str, Any] = {
             **self._auth_params(),
@@ -62,12 +96,12 @@ class TrelloAPI:
         return str(response.json()["id"])
 
     def create_cards_for_posts(self, list_name: str, posts: list[Post]) -> dict[int, str]:
-        list_id = self.create_list(list_name)
+        list_id = self.get_or_create_list(list_name)
         created: dict[int, str] = {}
         for post in posts:
             if post.id is None:
                 continue
-            created[post.id] = self.create_card(list_id, post)
+            created[post.id] = self.find_card_for_post(post) or self.create_card(list_id, post)
         return created
 
     @staticmethod
@@ -79,5 +113,5 @@ class TrelloAPI:
             f"Data: {post.post_date}\n\n"
             f"Descrição:\n{post.description}\n\n"
             f"Legenda:\n{post.caption}\n\n"
-            f"CTA:\n{post.cta}"
+            f"CTA:\n{post.cta}\n\n{TrelloAPI._post_marker(post)}"
         )

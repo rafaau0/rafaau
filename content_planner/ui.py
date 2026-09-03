@@ -1353,11 +1353,11 @@ class ContentPlannerApp(ctk.CTk):
                 list_setting = f"TRELLO_LIST_{client.id}_{year}_{month}"
                 list_id = self.db.get_setting(list_setting)
                 if not list_id:
-                    list_id = api.create_list(list_name)
+                    list_id = api.get_or_create_list(list_name)
                     self.db.set_setting(list_setting, list_id)
                 for post in pending_posts:
                     if post.id is not None:
-                        card_id = api.create_card(list_id, post)
+                        card_id = api.find_card_for_post(post) or api.create_card(list_id, post)
                         self.db.update_post_trello_card(post.id, card_id)
                         created[post.id] = card_id
             except Exception as exc:

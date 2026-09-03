@@ -14,6 +14,10 @@ class VideoError(RuntimeError):
     """Erro compreensível para exibir na interface."""
 
 
+PROBE_TIMEOUT_SECONDS = 60
+PROCESS_TIMEOUT_SECONDS = 60 * 60 * 2
+
+
 @dataclass
 class Subtitle:
     start: float
@@ -65,7 +69,7 @@ def probe(path: Path) -> tuple[float, int, int]:
         raise VideoError(str(exc)) from exc
     result = subprocess.run(
         [ffprobe, "-v", "error", "-select_streams", "v:0", "-show_entries", "format=duration:stream=width,height", "-of", "json", str(path)],
-        capture_output=True, text=True, check=False,
+        capture_output=True, text=True, check=False, timeout=PROBE_TIMEOUT_SECONDS,
     )
     if result.returncode:
         raise VideoError(result.stderr.strip() or "Não foi possível ler este vídeo.")
@@ -113,7 +117,10 @@ def transcribe(video: Path, model_name: str, max_words: int, progress=None) -> l
     with tempfile.TemporaryDirectory(prefix="neiva_legendas_") as folder:
         audio = Path(folder) / "audio.wav"
         if progress: progress("Extraindo áudio…", 5)
-        result = subprocess.run([_ffmpeg(), "-y", "-i", str(video), "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", str(audio)], capture_output=True, text=True)
+        try:
+            result = subprocess.run([_ffmpeg(), "-y", "-i", str(video), "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", str(audio)], capture_output=True, text=True, timeout=PROCESS_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired as exc:
+            raise VideoError("A extração de áudio excedeu o tempo limite de 2 horas.") from exc
         if result.returncode:
             raise VideoError(result.stderr[-1200:] or "Não foi possível extrair o áudio do vídeo.")
         if progress: progress("Carregando modelo de transcrição…", 12)
@@ -227,10 +234,12 @@ def render(project: VideoProject, output: Path, video_format: str, fit_mode: str
     # CRF mantém a qualidade escolhida; o preset rápido reduz o tempo de codificação.
     encoder_preset = {"Alta": "fast", "Média": "veryfast", "Baixa": "superfast"}.get(quality, "fast")
     try:
-        result = subprocess.run([_ffmpeg(), "-y", "-i", str(project.video_path), "-vf", filters, "-c:v", "libx264", "-crf", crf, "-preset", encoder_preset, "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(output)], capture_output=True, text=True)
+        result = subprocess.run([_ffmpeg(), "-y", "-i", str(project.video_path), "-vf", filters, "-c:v", "libx264", "-crf", crf, "-preset", encoder_preset, "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(output)], capture_output=True, text=True, timeout=PROCESS_TIMEOUT_SECONDS)
         if result.returncode:
             raise VideoError(result.stderr[-1600:] or "Falha na renderização.")
         if progress: progress("Vídeo exportado.", 100)
+    except subprocess.TimeoutExpired as exc:
+        raise VideoError("A renderização excedeu o tempo limite de 2 horas.") from exc
     finally:
         if burn_subtitles:
             temporary_srt.unlink(missing_ok=True)

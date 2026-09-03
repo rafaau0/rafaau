@@ -32,7 +32,7 @@ O módulo é independente e já inclui a automação necessária. Não requer a 
 ## Executar em desenvolvimento
 
 ```powershell
-cd "C:\Users\rafaa\OneDrive\Documentos\rafaau"
+cd "C:\Users\rafaa\Documents\PROJETOS\Neiva-Planner-main"
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
@@ -63,6 +63,8 @@ Os vídeos baixados ficam em `exports/downloads` e os resultados das análises e
 
 O arquivo final será `dist\NeivaPlanner_v1.exe`. No executável, o banco é salvo em `%LOCALAPPDATA%\NeivaPlanner\database`; bancos de versões portáteis anteriores são migrados automaticamente. Os arquivos exportados continuam na pasta `exports` ao lado do executável.
 
+Antes de distribuir uma versão, execute os testes, gere o executável em uma pasta nova e valide manualmente: abertura do aplicativo, criação de cliente/post, exportação de PDF, conexão Trello e um vídeo curto. Assine o executável antes de distribuição pública.
+
 Para distribuir os recursos de vídeo sem exigir configuração manual, coloque `ffmpeg.exe` e `ffprobe.exe` em `assets\ffmpeg` antes de gerar o executável. Se esses arquivos não estiverem presentes, o aplicativo procurará o FFmpeg no `PATH` do Windows.
 
 ## Trello
@@ -82,6 +84,8 @@ Esta configuração é feita uma única vez pelo responsável pelo Neiva Planner
 Também é possível definir `TRELLO_APP_KEY` no ambiente de build. A chave do aplicativo é pública; o token individual de cada usuário permanece secreto no cofre do Windows.
 
 O sistema só envia ao Trello conteúdos que ainda não possuem um card vinculado. Assim, repetir o envio não cria cards duplicados.
+
+Cada card recebe um identificador interno do post local. Caso a conexão caia após o Trello aceitar uma criação, uma nova tentativa procura esse identificador antes de criar outro card.
 
 ## Backup
 
