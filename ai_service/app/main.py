@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 
 import requests
 from fastapi import Depends, FastAPI, Header, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import Boolean, DateTime, Integer, String, UniqueConstraint, create_engine, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
@@ -23,6 +24,7 @@ elif DATABASE_URL.startswith("postgresql://"):
 
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+bearer_scheme = HTTPBearer(auto_error=False)
 
 
 class Base(DeclarativeBase):
@@ -80,17 +82,17 @@ def db_session():
         yield session
 
 
-def require_admin(authorization: str | None = Header(default=None)) -> None:
+def require_admin(credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme)) -> None:
     expected = os.getenv("NEIVA_ADMIN_TOKEN", "")
-    supplied = authorization.removeprefix("Bearer ").strip() if authorization else ""
+    supplied = credentials.credentials if credentials else ""
     if not expected or not hmac.compare_digest(supplied, expected):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Não autorizado.")
 
 
 def current_client(
-    authorization: str | None = Header(default=None), session: Session = Depends(db_session)
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme), session: Session = Depends(db_session)
 ) -> Client:
-    token = authorization.removeprefix("Bearer ").strip() if authorization else ""
+    token = credentials.credentials if credentials else ""
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Chave de acesso ausente.")
     client = session.scalar(select(Client).where(Client.token_hash == token_hash(token)))
