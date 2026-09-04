@@ -1,5 +1,8 @@
 name: Quality
 
+permissions:
+  contents: write
+
 on:
   push:
   pull_request:
@@ -39,3 +42,11 @@ jobs:
           path: dist/NeivaPlanner_v1.exe
           if-no-files-found: error
           retention-days: 14
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          Copy-Item -LiteralPath dist/NeivaPlanner_v1.exe -Destination dist/rafaau_v1.exe
+          gh release create $env:GITHUB_REF_NAME dist/rafaau_v1.exe --title "rafaau $env:GITHUB_REF_NAME" --generate-notes --verify-tag
