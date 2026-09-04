@@ -6,6 +6,7 @@ import customtkinter as ctk
 from tkinter import messagebox
 
 from .account_sessions import activate_account, current_account, remove_account, saved_accounts
+from .design_system import COLORS as UI, RADIUS, font, primary_button, secondary_button
 
 
 class AccountManagerDialog(ctk.CTkToplevel):
@@ -15,6 +16,7 @@ class AccountManagerDialog(ctk.CTkToplevel):
         self.title("Contas neste computador")
         self.geometry("520x520")
         self.minsize(460, 420)
+        self.configure(fg_color=UI["canvas"])
         self.transient(parent)
         self.grab_set()
         self.after(80, self.focus_force)
@@ -23,14 +25,14 @@ class AccountManagerDialog(ctk.CTkToplevel):
     def _render(self) -> None:
         for child in self.winfo_children():
             child.destroy()
-        ctk.CTkLabel(self, text="Suas contas", font=ctk.CTkFont(size=25, weight="bold")).pack(anchor="w", padx=24, pady=(24, 3))
+        ctk.CTkLabel(self, text="Suas contas", font=font(27, "bold", heading=True)).pack(anchor="w", padx=24, pady=(24, 3))
         ctk.CTkLabel(self, text="Alterne de perfil sem informar a senha novamente.", text_color="#68707D").pack(anchor="w", padx=24, pady=(0, 16))
         current = current_account()
-        accounts_frame = ctk.CTkScrollableFrame(self, fg_color="#F7F8FA", corner_radius=12)
+        accounts_frame = ctk.CTkScrollableFrame(self, fg_color=UI["surface"], corner_radius=RADIUS["md"], border_width=1, border_color=UI["border"])
         accounts_frame.pack(fill="both", expand=True, padx=24)
         for account in saved_accounts():
-            row = ctk.CTkFrame(accounts_frame, fg_color="#FFFFFF", border_width=1, border_color="#DDE1E7", corner_radius=10)
-            row.pack(fill="x", pady=5)
+            row = ctk.CTkFrame(accounts_frame, fg_color="transparent", corner_radius=0)
+            row.pack(fill="x", pady=2)
             row.grid_columnconfigure(0, weight=1)
             ctk.CTkLabel(row, text=account.name, font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, sticky="w", padx=14, pady=(11, 1))
             detail = account.email + (f"  ·  Plano {account.plan.title()}" if account.plan else "")
@@ -42,7 +44,7 @@ class AccountManagerDialog(ctk.CTkToplevel):
                 ctk.CTkButton(row, text="×", width=34, fg_color="transparent", hover_color="#FFF0F2", text_color="#C92A3D", command=lambda value=account.account_id: self._remove(value)).grid(row=0, column=2, rowspan=2, padx=(0, 8))
         actions = ctk.CTkFrame(self, fg_color="transparent")
         actions.pack(fill="x", padx=24, pady=20)
-        ctk.CTkButton(actions, text="ADICIONAR OUTRA CONTA", command=lambda: self._restart("add")).pack(side="left")
+        ctk.CTkButton(actions, text="ADICIONAR OUTRA CONTA", command=lambda: self._restart("add"), **primary_button()).pack(side="left")
         if current:
             ctk.CTkButton(actions, text="Sair desta conta", fg_color="#E7EAF0", hover_color="#D8DDE5", text_color="#17191F", command=lambda: self._logout(current.account_id)).pack(side="right")
 

@@ -28,6 +28,7 @@ from .account_manager import AccountManagerDialog
 from .account_sessions import current_account
 from .plan_rules import current_plan_rules
 from .silence_editor import SilenceSettings, apply_cuts, detect_silences, output_segments, plan_cuts, remap_subtitles
+from .design_system import COLORS as UI, RADIUS, font, primary_button, secondary_button
 
 
 CONTENT_TYPES = ["Reels", "Story", "Carrossel", "Feed", "Promoção"]
@@ -65,15 +66,6 @@ LOGO_PATH = _asset_path("neiva_logo.png")
 ICON_PATH = _asset_path("neiva_logo.ico")
 
 # Tokens visuais centralizados. Não participam de nenhuma regra de negócio.
-UI = {
-    "canvas": "#F7F8FA", "sidebar": "#FFFFFF", "surface": "#FFFFFF",
-    "surface_alt": "#F0F2F5", "border": "#DDE1E7", "text": "#17191F",
-    "muted": "#68707D", "accent": "#FF263D", "accent_hover": "#D91E32",
-    "success": "#168A5B", "warning": "#C77A08", "error": "#C92A3D",
-    "secondary": "#E7EAF0", "secondary_hover": "#D8DDE5", "selection": "#FFF0F2",
-}
-
-
 class ContentPlannerApp(ctk.CTk):
     def __init__(self) -> None:
         super().__init__()
@@ -131,7 +123,7 @@ class ContentPlannerApp(ctk.CTk):
         style.map("Neiva.Treeview", background=[("selected", UI["selection"])], foreground=[("selected", UI["text"])])
 
     def _build_sidebar(self) -> None:
-        self.sidebar = ctk.CTkFrame(self, width=244, corner_radius=0, fg_color=UI["sidebar"])
+        self.sidebar = ctk.CTkFrame(self, width=224, corner_radius=0, fg_color=UI["sidebar"])
         self.sidebar.grid(row=0, column=0, sticky="nsew")
         self.sidebar.grid_propagate(False)
         sidebar = self.sidebar
@@ -153,21 +145,28 @@ class ContentPlannerApp(ctk.CTk):
             ("Configurações", self.show_settings),
         ]
         self.nav_buttons: list[ctk.CTkButton] = []
+        self.nav_indicators: list[ctk.CTkFrame] = []
         for label, handler in self._navigation:
+            row = ctk.CTkFrame(sidebar, height=42, corner_radius=0, fg_color="transparent")
+            row.pack(fill="x", pady=2)
+            row.pack_propagate(False)
+            indicator = ctk.CTkFrame(row, width=3, corner_radius=0, fg_color="transparent")
+            indicator.pack(side="left", fill="y")
             button = ctk.CTkButton(
-                sidebar,
+                row,
                 text=label,
                 height=40,
-                corner_radius=8,
+                corner_radius=0,
                 anchor="w",
                 fg_color="transparent",
-                hover_color=UI["surface_alt"],
-                text_color=UI["muted"],
-                font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+                hover_color=UI["sidebar_hover"],
+                text_color=UI["sidebar_text"],
+                font=font(12, "bold"),
                 command=handler,
             )
-            button.pack(fill="x", padx=18, pady=6)
+            button.pack(side="left", fill="both", expand=True, padx=(0, 12))
             self.nav_buttons.append(button)
+            self.nav_indicators.append(indicator)
 
         account = current_account()
         account_name = account.name if account else "Conta Neiva"
@@ -177,10 +176,13 @@ class ContentPlannerApp(ctk.CTk):
             text=f"{account_name}\n{account_email}",
             anchor="w",
             height=58,
-            fg_color=UI["surface_alt"],
-            hover_color=UI["secondary"],
-            text_color=UI["text"],
-            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+            corner_radius=0,
+            border_width=1,
+            border_color=UI["sidebar_hover"],
+            fg_color="transparent",
+            hover_color=UI["sidebar_hover"],
+            text_color="#FFFFFF",
+            font=font(11, "bold"),
             command=self._open_account_manager,
         ).pack(side="bottom", fill="x", padx=18, pady=20)
 
@@ -233,7 +235,7 @@ class ContentPlannerApp(ctk.CTk):
         self._content_header = header
         header.grid(row=0, column=0, sticky="ew", padx=(215 if self._compact_layout else 28, 28), pady=(24, 12))
         header.grid_columnconfigure(0, weight=1)
-        ctk.CTkLabel(header, text=title, text_color=UI["text"], font=ctk.CTkFont(family="Segoe UI", size=28, weight="bold")).grid(row=0, column=0, sticky="w")
+        ctk.CTkLabel(header, text=title, text_color=UI["text"], font=font(30, "bold", heading=True)).grid(row=0, column=0, sticky="w")
         if subtitle:
             ctk.CTkLabel(header, text=subtitle, text_color=UI["muted"], font=ctk.CTkFont(family="Segoe UI", size=13)).grid(row=1, column=0, sticky="w", pady=(4, 0))
 
@@ -252,9 +254,10 @@ class ContentPlannerApp(ctk.CTk):
         self.active_view = view_name
         if hasattr(self, "mobile_view"):
             self.mobile_view.set(view_name)
-        for label, button in zip((item[0] for item in self._navigation), self.nav_buttons):
+        for label, button, indicator in zip((item[0] for item in self._navigation), self.nav_buttons, self.nav_indicators):
             selected = label == view_name
-            button.configure(fg_color=UI["surface_alt"] if selected else "transparent", text_color=UI["text"] if selected else UI["muted"])
+            button.configure(fg_color=UI["sidebar_hover"] if selected else "transparent", text_color="#FFFFFF" if selected else UI["sidebar_text"])
+            indicator.configure(fg_color=UI["accent"] if selected else "transparent")
         return self._clear_content(title, subtitle)
 
     def _show_info(self, title: str, message: str) -> None:
@@ -270,26 +273,26 @@ class ContentPlannerApp(ctk.CTk):
         frame = self._set_active_view("Dashboard", "Dashboard", "Visão executiva do calendário editorial.")
         stats = self.db.dashboard_stats()
 
-        cards = ctk.CTkFrame(frame, fg_color="transparent")
+        cards = ctk.CTkFrame(frame, fg_color=UI["surface"], corner_radius=RADIUS["md"], border_width=1, border_color=UI["border"])
         cards.grid(row=0, column=0, sticky="ew", pady=(0, 18))
         for index in range(4):
             cards.grid_columnconfigure(index, weight=1)
 
         metrics = [
-            ("Clientes", stats["clients"], "#2563EB"),
-            ("Conteúdos", stats["posts"], "#7C3AED"),
-            ("Pendentes", stats["pending"], "#B45309"),
-            ("Concluídos", stats["done"], "#047857"),
+            ("Clientes", stats["clients"], UI["text"]),
+            ("Conteúdos", stats["posts"], UI["text"]),
+            ("Pendentes", stats["pending"], UI["warning"]),
+            ("Concluídos", stats["done"], UI["success"]),
         ]
         for col, (label, value, color) in enumerate(metrics):
-            card = ctk.CTkFrame(cards, fg_color=UI["surface"], corner_radius=12, border_width=1, border_color=UI["border"])
-            card.grid(row=0, column=col, sticky="ew", padx=8)
-            ctk.CTkLabel(card, text=label.upper(), text_color=UI["muted"], font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold")).pack(anchor="w", padx=18, pady=(16, 2))
-            ctk.CTkLabel(card, text=str(value), text_color=color, font=ctk.CTkFont(family="Segoe UI", size=34, weight="bold")).pack(
+            card = ctk.CTkFrame(cards, fg_color="transparent", corner_radius=0)
+            card.grid(row=0, column=col, sticky="ew")
+            ctk.CTkLabel(card, text=label.upper(), text_color=UI["muted"], font=font(9, "bold")).pack(anchor="w", padx=22, pady=(18, 2))
+            ctk.CTkLabel(card, text=str(value), text_color=color, font=font(32, "bold", heading=True)).pack(
                 anchor="w", padx=18, pady=(0, 18)
             )
 
-        quick = ctk.CTkFrame(frame, fg_color=UI["surface"], corner_radius=12, border_width=1, border_color=UI["border"])
+        quick = ctk.CTkFrame(frame, fg_color=UI["surface"], corner_radius=RADIUS["md"], border_width=1, border_color=UI["border"])
         quick.grid(row=1, column=0, sticky="ew")
         for index in range(3):
             quick.grid_columnconfigure(index, weight=1)

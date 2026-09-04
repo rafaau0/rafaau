@@ -11,12 +11,10 @@ import requests
 
 from .secrets import get_secret, set_secret
 from .account_sessions import current_token, save_account
+from .design_system import COLORS as UI, RADIUS, font, primary_button
 
 
 API_URL = "https://neiva-ai-api.onrender.com"
-UI = {"canvas": "#F7F8FA", "surface": "#FFFFFF", "text": "#17191F", "muted": "#68707D", "accent": "#FF263D", "accent_hover": "#D91E32", "border": "#DDE1E7", "error": "#C92A3D"}
-
-
 def _device_id() -> str:
     value = get_secret("NEIVA_DEVICE_ID")
     if value:
@@ -51,17 +49,16 @@ class LoginWindow(ctk.CTk):
         self._animating = False
         self._result_queue: Queue[tuple[str, str]] = Queue()
         self.title("rafaau | Entrar")
-        self.geometry("980x620")
-        self.minsize(760, 560)
+        self.geometry("760x680")
+        self.minsize(620, 600)
         self.configure(fg_color=UI["canvas"])
         self.protocol("WM_DELETE_WINDOW", self._cancel)
         ctk.set_appearance_mode("light")
 
-        self.card = ctk.CTkFrame(self, fg_color=UI["surface"], corner_radius=18, border_width=1, border_color=UI["border"])
-        self.card.place(relx=.5, rely=.5, anchor="center", relwidth=.9, relheight=.82)
+        self.card = ctk.CTkFrame(self, fg_color=UI["surface"], corner_radius=RADIUS["lg"], border_width=1, border_color=UI["border"])
+        self.card.place(relx=.5, rely=.5, anchor="center", width=520, relheight=.88)
         self.card.bind("<Configure>", lambda _event: self._resize_panels())
         self._build_forms()
-        self._build_slider()
         self._resize_panels()
         self.after(80, self._poll_results)
         self.after(150, self.login_email.focus_set)
@@ -89,11 +86,10 @@ class LoginWindow(ctk.CTk):
             self.after(80, self._poll_results)
 
     def _resize_panels(self) -> None:
-        if self._animating:
-            return
-        self.login_form.place(relx=0, rely=0, relwidth=.5, relheight=1)
-        self.signup_form.place(relx=.5, rely=0, relwidth=.5, relheight=1)
-        self.slider.place(relx=0 if self.showing_signup else .5, rely=0, relwidth=.5, relheight=1)
+        active = self.signup_form if self.showing_signup else self.login_form
+        inactive = self.login_form if self.showing_signup else self.signup_form
+        inactive.place_forget()
+        active.place(relx=0, rely=0, relwidth=1, relheight=1)
 
     @staticmethod
     def _title(parent: ctk.CTkFrame, title: str, subtitle: str) -> None:
@@ -133,6 +129,8 @@ class LoginWindow(ctk.CTk):
         self.login_error = self._message(self.login_form)
         self.login_button = ctk.CTkButton(self.login_form, text="ENTRAR", height=41, fg_color=UI["accent"], hover_color=UI["accent_hover"], command=self._submit_login)
         self.login_button.pack(fill="x", padx=46, pady=(8, 9))
+        ctk.CTkButton(self.login_form, text="Criar uma conta", fg_color="transparent", hover=False,
+                      text_color=UI["accent"], font=font(12, "bold"), command=self._toggle_slider).pack(pady=(0, 4))
         ctk.CTkButton(self.login_form, text="Tenho um código de ativação antigo", fg_color="transparent", hover=False, text_color=UI["muted"], font=ctk.CTkFont(size=11), command=self._show_legacy_prompt).pack(pady=(0, 18))
 
         self._title(self.signup_form, "Criar conta", "Comece organizando sua operação.")
@@ -143,47 +141,17 @@ class LoginWindow(ctk.CTk):
         self.signup_error = self._message(self.signup_form)
         self.signup_button = ctk.CTkButton(self.signup_form, text="CRIAR CONTA", height=41, fg_color=UI["accent"], hover_color=UI["accent_hover"], command=self._submit_signup)
         self.signup_button.pack(fill="x", padx=46, pady=(10, 8))
+        ctk.CTkButton(self.signup_form, text="Voltar para o login", fg_color="transparent", hover=False,
+                      text_color=UI["accent"], font=font(12, "bold"), command=self._toggle_slider).pack(pady=(0, 4))
         ctk.CTkLabel(self.signup_form, text="Sua conta começa no plano Grátis. Você pode fazer upgrade quando quiser.", text_color=UI["muted"], wraplength=300, justify="center", font=ctk.CTkFont(size=11)).pack(padx=35, pady=(0, 16))
-
-    def _build_slider(self) -> None:
-        self.slider = ctk.CTkFrame(self.card, fg_color=UI["accent"], corner_radius=18)
-        self.slider_content = ctk.CTkFrame(self.slider, fg_color="transparent")
-        self.slider_content.place(relx=.5, rely=.5, anchor="center", relwidth=.82, relheight=.8)
-        self.slider_brand = ctk.CTkLabel(self.slider_content, text="rafaau", text_color="white", font=ctk.CTkFont(family="Segoe UI", size=30, weight="bold"))
-        self.slider_brand.pack(pady=(42, 18))
-        self.slider_title = ctk.CTkLabel(self.slider_content, text="Bem-vindo de volta!", text_color="white", font=ctk.CTkFont(size=27, weight="bold"))
-        self.slider_title.pack()
-        self.slider_text = ctk.CTkLabel(self.slider_content, text="Entre para organizar conteúdos, clientes e entregas em um só lugar.", text_color="#FFE5E8", wraplength=290, justify="center", font=ctk.CTkFont(size=13))
-        self.slider_text.pack(pady=(13, 26))
-        self.slider_button = ctk.CTkButton(self.slider_content, text="CRIAR CONTA", height=42, fg_color="transparent", border_width=1, border_color="#FFFFFF", hover_color="#D91E32", command=self._toggle_slider)
-        self.slider_button.pack(fill="x", padx=24)
-        ctk.CTkLabel(self.slider_content, text="Seu conteúdo com direção.", text_color="#FFCFD5", font=ctk.CTkFont(size=11)).pack(pady=(25, 0))
 
     def _social_notice(self, provider: str) -> None:
         self._show_login_error(f"Login com {provider} estará disponível após a configuração da integração segura.")
 
     def _toggle_slider(self) -> None:
-        if self._animating:
-            return
-        self._animating = True
-        destination_signup = not self.showing_signup
-        start, end = (.5, 0.0) if destination_signup else (0.0, .5)
-        self.slider_title.configure(text="Que bom te ver!" if destination_signup else "Bem-vindo de volta!")
-        self.slider_text.configure(text="Já tem uma conta? Entre para continuar de onde parou." if destination_signup else "Ainda não tem conta? Crie a sua e escolha o plano ideal depois.")
-        self.slider_button.configure(text="JÁ TENHO CONTA" if destination_signup else "CRIAR CONTA")
-        steps = 18
-        def move(step: int = 0) -> None:
-            progress = step / steps
-            eased = 1 - (1 - progress) ** 3
-            x = start + (end - start) * eased
-            self.slider.place(relx=x, rely=0, relwidth=.5, relheight=1)
-            if step < steps:
-                self.after(33, lambda: move(step + 1))
-            else:
-                self.showing_signup = destination_signup
-                self._animating = False
-                (self.signup_name if destination_signup else self.login_email).focus_set()
-        move()
+        self.showing_signup = not self.showing_signup
+        self._resize_panels()
+        (self.signup_name if self.showing_signup else self.login_email).focus_set()
 
     @staticmethod
     def _valid_email(email: str) -> bool:
