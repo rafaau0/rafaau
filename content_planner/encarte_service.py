@@ -61,15 +61,22 @@ def _read_products(path: Path, limit: int = 24) -> list[OfferProduct]:
     workbook = openpyxl.load_workbook(path, data_only=True, read_only=True)
     try:
         sheet = workbook.active
-        headers = [_normalize(sheet.cell(1, col).value).upper() for col in range(1, sheet.max_column + 1)]
+        # Alguns XLSX exportados por outros sistemas nao possuem dimensoes
+        # confiaveis: max_row/max_column podem ser None. Ler as linhas reais
+        # evita depender desse metadado incompleto.
+        rows = sheet.iter_rows(values_only=True)
+        header_row = next(rows, None)
+        if not header_row:
+            raise ValueError("A planilha esta vazia ou nao possui cabecalho.")
+        headers = [_normalize(value).upper() for value in header_row]
         description_col = next((index + 1 for index, item in enumerate(headers) if "DESCR" in item), 0)
         price_col = next((index + 1 for index, item in enumerate(headers) if "VALOR" in item or "PRECO" in item), 0)
         if not description_col or not price_col:
             raise ValueError("A planilha precisa das colunas DESCRIÇÃO e VALOR/PREÇO.")
         products = []
-        for row in range(2, sheet.max_row + 1):
-            description = str(sheet.cell(row, description_col).value or "").strip()
-            value = sheet.cell(row, price_col).value
+        for row in rows:
+            description = str((row[description_col - 1] if len(row) >= description_col else "") or "").strip()
+            value = row[price_col - 1] if len(row) >= price_col else None
             price = f"{float(value):.2f}".replace(".", ",") if isinstance(value, (int, float)) else str(value or "").replace("R$", "").strip()
             if description or price:
                 products.append(OfferProduct(len(products) + 1, description, price))
