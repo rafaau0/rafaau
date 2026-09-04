@@ -12,7 +12,7 @@ const geistMono = Geist_Mono({
   subsets: ['latin'],
 });
 
-export const metadata: Metadata = { title: 'Neiva Planner | Planeje, crie e publique melhor', description: 'Planejamento de conteúdo, Trello, vídeo e IA em um só lugar.' };
+export const metadata: Metadata = { title: 'rafaau | Conteúdo organizado para quem atende clientes', description: 'Planejamento editorial, clientes, vídeo e IA para criadores, freelancers e pequenas agências.' };
 
 export default function RootLayout({
   children,

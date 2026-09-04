@@ -20,7 +20,7 @@ export function ActivationStatus() {
         const response = await fetch(`${API_URL}/v1/billing/orders/${encodeURIComponent(order)}?claim=${encodeURIComponent(claim)}`);
         const data = await response.json();
         if (cancelled) return;
-        if (data.license_active) { setMessage('Pagamento confirmado. Sua licenca esta ativa: abra o Neiva Planner e entre com seu e-mail e senha.'); return; }
+        if (data.license_active) { setMessage('Pagamento confirmado. Sua licenca esta ativa: abra o rafaau e entre com seu e-mail e senha.'); return; }
         attempts += 1;
         setMessage('Pagamento enviado. Estamos confirmando sua licenca...');
         if (attempts < 6) window.setTimeout(check, 2500);
