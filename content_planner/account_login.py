@@ -5,6 +5,7 @@ import re
 import secrets
 import threading
 import webbrowser
+from queue import Empty, Queue
 
 import customtkinter as ctk
 import requests
@@ -44,6 +45,7 @@ class LoginWindow(ctk.CTk):
         self.authenticated = False
         self.showing_signup = False
         self._animating = False
+        self._result_queue: Queue[tuple[str, str]] = Queue()
         self.title("rafaau | Entrar")
         self.geometry("980x620")
         self.minsize(760, 560)
@@ -57,7 +59,30 @@ class LoginWindow(ctk.CTk):
         self._build_forms()
         self._build_slider()
         self._resize_panels()
+        self.after(80, self._poll_results)
         self.after(150, self.login_email.focus_set)
+
+    def _poll_results(self) -> None:
+        """Atualiza o Tk apenas na thread principal; chamadas de rede rodam em segundo plano."""
+        try:
+            while True:
+                action, value = self._result_queue.get_nowait()
+                if action == "login_success" or action == "legacy_success":
+                    self.authenticated = True
+                    self.destroy()
+                    return
+                if action == "login_error":
+                    self._show_login_error(value)
+                    self.login_button.configure(state="normal", text="ENTRAR")
+                elif action == "signup_success":
+                    self._signup_success(value)
+                elif action == "signup_error":
+                    self.signup_error.configure(text=value)
+                    self.signup_button.configure(state="normal", text="CRIAR CONTA")
+        except Empty:
+            pass
+        if self.winfo_exists():
+            self.after(80, self._poll_results)
 
     def _resize_panels(self) -> None:
         if self._animating:
@@ -181,10 +206,9 @@ class LoginWindow(ctk.CTk):
             data = response.json()
             set_secret("NEIVA_AI_CLIENT_TOKEN", data["access_token"])
             set_secret("NEIVA_ACCOUNT_EMAIL", email)
-            self.authenticated = True
-            self.after(0, self.destroy)
+            self._result_queue.put(("login_success", ""))
         except Exception as exc:
-            self.after(0, lambda: (self._show_login_error(str(exc)), self.login_button.configure(state="normal", text="ENTRAR")))
+            self._result_queue.put(("login_error", str(exc)))
 
     def _submit_signup(self) -> None:
         name, email, password = self.signup_name.get().strip(), self.signup_email.get().strip().lower(), self.signup_password.get()
@@ -202,9 +226,9 @@ class LoginWindow(ctk.CTk):
                 try: detail = response.json().get("detail", response.text)
                 except ValueError: detail = response.text
                 raise RuntimeError(detail or "Não foi possível criar sua conta.")
-            self.after(0, lambda: self._signup_success(email))
+            self._result_queue.put(("signup_success", email))
         except Exception as exc:
-            self.after(0, lambda: (self.signup_error.configure(text=str(exc)), self.signup_button.configure(state="normal", text="CRIAR CONTA")))
+            self._result_queue.put(("signup_error", str(exc)))
 
     def _signup_success(self, email: str) -> None:
         self.signup_error.configure(text="Conta criada. Escolha um plano para ativar sua licença.", text_color="#168A5B")
@@ -227,10 +251,9 @@ class LoginWindow(ctk.CTk):
                 except ValueError: detail = response.text
                 raise RuntimeError(detail or "Não foi possível ativar o código.")
             set_secret("NEIVA_AI_CLIENT_TOKEN", response.json()["access_token"])
-            self.authenticated = True
-            self.after(0, self.destroy)
+            self._result_queue.put(("legacy_success", ""))
         except Exception as exc:
-            self.after(0, lambda: (self._show_login_error(str(exc)), self.login_button.configure(state="normal", text="ENTRAR")))
+            self._result_queue.put(("login_error", str(exc)))
 
     def _cancel(self) -> None:
         self.authenticated = False
