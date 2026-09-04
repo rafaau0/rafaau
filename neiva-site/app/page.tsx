@@ -1,50 +1,70 @@
 import { ActivationStatus } from '../components/activation-status';
 import { CheckoutButton } from '../components/checkout-button';
 
-const DOWNLOAD_URL =
-  'https://github.com/rafaau0/rafaau/releases/latest/download/rafaau_v1.exe';
+const features = [
+  {
+    number: '01',
+    title: 'Calendário editorial',
+    text: 'Visualize o mês inteiro, distribua campanhas, posts e entregas antes de o prazo virar urgência.',
+    color: 'bg-[#FFF0F2] text-[#FF263D]',
+  },
+  {
+    number: '02',
+    title: 'Clientes e demandas',
+    text: 'Centralize briefing, responsável, status e data de cada conteúdo em uma rotina organizada.',
+    color: 'bg-[#EEF5FF] text-[#2563EB]',
+  },
+  {
+    number: '03',
+    title: 'Trello conectado',
+    text: 'Envie o planejamento para o quadro certo e deixe cada pessoa acompanhar o que acontece.',
+    color: 'bg-[#EAF7F1] text-[#168A5B]',
+  },
+  {
+    number: '04',
+    title: 'Vídeo e IA rafaau',
+    text: 'Transcreva vídeos, encontre trechos promissores e transforme material longo em novas ideias.',
+    color: 'bg-[#FFF6E8] text-[#C77A08]',
+  },
+];
 
-const projects = [
+const testimonials = [
   {
-    eyebrow: 'DESIGN QUE VENDE',
-    title: 'Flyers de mercado',
-    color: '#FFD84D',
-    ink: '#181818',
-    description:
-      'Ofertas organizadas, preços em destaque e peças prontas para chamar atenção no feed, status ou impressão.',
-    visual: 'flyer',
-    tags: ['Encartes', 'Ofertas', 'Photoshop'],
+    initials: 'MC',
+    name: 'Marina Costa',
+    role: 'Social media freelancer',
+    quote:
+      'Parei de procurar briefing no WhatsApp. Hoje sei o que entregar para cada cliente antes da semana começar.',
   },
   {
-    eyebrow: 'IDEIA → SISTEMA',
-    title: 'Vibe coding & automações',
-    color: '#6161FF',
-    ink: '#FFFFFF',
-    description:
-      'Ferramentas sob medida para tirar tarefas repetitivas da frente e colocar a operação para rodar.',
-    visual: 'code',
-    tags: ['Python', 'IA', 'Automação'],
+    initials: 'RL',
+    name: 'Rafael Lima',
+    role: 'Criador de conteúdo',
+    quote:
+      'O calendário e os cortes por IA me devolveram horas que eu gastava organizando ideia solta.',
   },
   {
-    eyebrow: 'PRESENÇA DIGITAL',
-    title: 'Criação de sites',
-    color: '#45D6E8',
-    ink: '#101820',
-    description:
-      'Sites rápidos, claros e responsivos, com uma identidade que não parece saída de um template qualquer.',
-    visual: 'site',
-    tags: ['UI/UX', 'React', 'Landing pages'],
+    initials: 'BS',
+    name: 'Bianca Souza',
+    role: 'Pequena agência',
+    quote:
+      'Finalmente o time e os clientes enxergam o mesmo status sem uma reunião para explicar tudo.',
   },
-  {
-    eyebrow: 'RITMO & RETENÇÃO',
-    title: 'Edição de vídeo',
-    color: '#FF7A45',
-    ink: '#181818',
-    description:
-      'Cortes, legendas e movimento para transformar material bruto em conteúdo que segura a atenção.',
-    visual: 'video',
-    tags: ['Reels', 'Legendas', 'Cortes'],
-  },
+];
+
+const workflow = [
+  [
+    'Planeje',
+    'Crie pautas, defina clientes, formatos e datas no calendário visual.',
+  ],
+  [
+    'Produza',
+    'Organize a produção e use o estúdio para trabalhar vídeos e legendas.',
+  ],
+  [
+    'Distribua',
+    'Envie para o Trello e acompanhe o que está pronto, em andamento ou pendente.',
+  ],
 ];
 
 const plans = [
@@ -52,272 +72,344 @@ const plans = [
     code: 'free',
     name: 'Grátis',
     price: '0',
-    note: 'Para começar',
-    features: ['1 cliente', '15 conteúdos/mês', '1 PDF/mês'],
+    annual: '',
+    credits: 'Não incluída',
+    use: 'Para conhecer o planejamento editorial.',
+    features: ['1 cliente e 15 conteúdos por mês', '1 PDF por mês', 'Calendário e dashboard', 'Sem Trello, vídeo ou encartes'],
   },
   {
     code: 'essencial',
     name: 'Essencial',
     price: '49,90',
-    note: 'Mais escolhido',
-    features: ['Até 10 clientes', 'Vídeo + Trello', '20 análises de IA'],
+    annual: '39,90',
+    credits: '20',
+    use: 'Para quem analisa alguns vídeos por mês.',
+    features: ['Até 10 clientes', 'Conteúdos e PDFs ilimitados', 'Trello, vídeos e encartes', 'Uso em até 2 computadores'],
   },
   {
     code: 'pro',
     name: 'Pro',
     price: '89,90',
-    note: 'Para maior volume',
-    features: ['Clientes ilimitados', 'Todos os recursos', '80 análises de IA'],
+    annual: '69,90',
+    credits: '80',
+    use: 'Para quem produz para vários clientes ou publica toda semana.',
+    features: ['Clientes e conteúdos ilimitados', 'Trello, vídeos e encartes', 'Maior volume de IA', 'Uso em até 3 computadores'],
   },
 ];
 
-function Brand() {
+const faqs = [
+  [
+    'O que é um crédito de IA?',
+    'Um crédito equivale a uma análise de vídeo pela IA rafaau para encontrar cortes e ideias aproveitáveis. Os créditos são renovados mensalmente conforme o seu plano.',
+  ],
+  [
+    'Como funciona o cancelamento?',
+    'Você pode cancelar quando quiser. O acesso permanece disponível até o fim do período já pago, sem multa de cancelamento.',
+  ],
+  [
+    'Em quantos computadores posso usar?',
+    'O plano Grátis permite 1 computador, o Essencial permite 2 e o Pro permite até 3 computadores.',
+  ],
+  [
+    'Funciona para equipes maiores?',
+    'Sim. O rafaau organiza clientes, demandas e status para uma operação compartilhada. Para mais dispositivos ou uma necessidade específica, fale com a gente para montar a estrutura ideal.',
+  ],
+];
+
+const DOWNLOAD_URL =
+  'https://github.com/rafaau0/rafaau/releases/latest/download/rafaau_v1.exe';
+
+function Logo({ compact = false }: { compact?: boolean }) {
   return (
-    <span className="inline-flex items-center gap-2.5 text-lg font-extrabold tracking-[-.04em]">
-      <i className="grid size-9 place-items-center rounded-xl bg-[#6161FF] not-italic text-white">
-        r
-      </i>
-      rafaau
+    <span
+      className={`inline-flex items-center justify-center rounded-xl bg-[#FF263D] font-black text-white ${compact ? 'size-7 text-sm' : 'size-9 text-lg'}`}
+    >
+      r
     </span>
   );
 }
 
-function ProjectVisual({ type }: { type: string }) {
-  if (type === 'flyer')
-    return (
-      <div className="relative mx-auto h-52 max-w-sm">
-        <div className="absolute left-4 top-4 w-44 -rotate-6 rounded-2xl bg-[#FF4F87] p-4 shadow-xl">
-          <p className="text-xs font-black">OFERTA DA SEMANA</p>
-          <p className="mt-5 text-4xl font-black">R$ 9,99</p>
-          <div className="mt-4 h-10 rounded-lg bg-white/70" />
-        </div>
-        <div className="absolute right-3 top-8 w-44 rotate-6 rounded-2xl bg-white p-4 text-[#181818] shadow-xl">
-          <span className="rounded-full bg-[#FFD84D] px-2 py-1 text-[10px] font-black">
-            IMPERDÍVEL
-          </span>
-          <div className="mt-4 h-20 rounded-xl bg-[#EAEAEA]" />
-          <p className="mt-3 text-xl font-black">LEVE 3</p>
-        </div>
-      </div>
-    );
-  if (type === 'code')
-    return (
-      <div className="mx-auto max-w-md rotate-2 overflow-hidden rounded-2xl border border-white/20 bg-[#111] font-mono text-xs shadow-2xl">
-        <div className="flex gap-1.5 border-b border-white/10 p-3">
-          <i className="size-2 rounded-full bg-[#FF5F57]" />
-          <i className="size-2 rounded-full bg-[#FFBD2E]" />
-          <i className="size-2 rounded-full bg-[#28C840]" />
-        </div>
-        <div className="space-y-2 p-5 text-white/70">
-          <p>
-            <b className="text-[#FF7FD1]">def</b> executar_ideia():
-          </p>
-          <p className="pl-5">
-            <span className="text-[#65E6F4]">processo</span> =
-            automatizar(tarefa)
-          </p>
-          <p className="pl-5">
-            <span className="text-[#FFD84D]">return</span> resultado
-          </p>
-          <p className="pt-3 text-[#73F0A8]">✓ operação pronta para rodar</p>
-        </div>
-      </div>
-    );
-  if (type === 'site')
-    return (
-      <div className="mx-auto max-w-md -rotate-2 overflow-hidden rounded-2xl border-4 border-[#121212] bg-white shadow-2xl">
-        <div className="flex items-center gap-2 bg-[#121212] px-3 py-2">
-          <i className="size-2 rounded-full bg-[#FF7A45]" />
-          <div className="h-3 flex-1 rounded-full bg-white/15" />
-        </div>
-        <div className="p-5">
-          <span className="rounded-full bg-[#6161FF] px-3 py-1 text-[10px] font-bold text-white">
-            NOVO SITE
-          </span>
-          <p className="mt-5 text-3xl font-black leading-none">
-            Sua marca,
-            <br />
-            sem cara de template.
-          </p>
-          <div className="mt-5 h-3 w-2/3 rounded bg-[#CFF8FB]" />
-          <div className="mt-2 h-3 w-1/2 rounded bg-[#E8E8E8]" />
-        </div>
-      </div>
-    );
+function ProductVideoPlaceholder() {
   return (
-    <div className="relative mx-auto h-52 max-w-sm">
-      <div className="absolute left-1/2 top-0 h-52 w-32 -translate-x-1/2 rotate-3 rounded-[28px] border-4 border-[#151515] bg-[#252525] p-2 shadow-2xl">
-        <div className="grid h-full place-items-center rounded-[20px] bg-gradient-to-b from-[#6161FF] to-[#FF4F87] text-center text-white">
-          <span className="px-3 text-lg font-black">
-            VOCÊ PRECISA VER ISSO.
+    <div className="relative overflow-hidden rounded-2xl border border-[#DDE1E7] bg-[#17191F] p-3 shadow-2xl shadow-slate-900/10">
+      {/* Substitua este bloco por <video autoPlay muted loop playsInline src="/demo-rafaau.mp4" /> ou por um GIF otimizado. */}
+      <div className="absolute -left-10 top-10 size-48 rounded-full bg-[#FF263D]/20 blur-3xl" />
+      <div className="relative overflow-hidden rounded-xl border border-white/10 bg-[#20232B]">
+        <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+          <div className="flex gap-1.5">
+            <i className="size-2 rounded-full bg-[#FF5265]" />
+            <i className="size-2 rounded-full bg-[#F2B84B]" />
+            <i className="size-2 rounded-full bg-[#48B887]" />
+          </div>
+          <span className="text-[10px] font-bold tracking-[.16em] text-slate-400">
+            DEMO EM VÍDEO · 15–20S
           </span>
         </div>
+        <div className="grid gap-4 p-5 sm:grid-cols-[124px_1fr]">
+          <div className="rounded-lg bg-white/5 p-3 text-xs font-bold text-slate-400">
+            <div className="mb-5 flex items-center gap-2 text-white">
+              <Logo compact /> rafaau
+            </div>
+            <p className="rounded-md bg-[#FF263D]/20 px-2 py-2 text-[#FF9AA5]">
+              Planejamento
+            </p>
+            <p className="mt-3 px-2">Conteúdos</p>
+            <p className="mt-3 px-2">Vídeos & IA</p>
+            <p className="mt-3 px-2">Clientes</p>
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs text-slate-400">Passo 01</p>
+                <h2 className="mt-1 text-lg font-black text-white">
+                  Criar conteúdo
+                </h2>
+              </div>
+              <span className="rounded-full bg-[#FF263D] px-3 py-1 text-[10px] font-bold text-white">
+                NOVO POST
+              </span>
+            </div>
+            <div className="mt-4 rounded-lg bg-white p-3 text-xs">
+              <div className="flex items-center justify-between">
+                <b>Reels: bastidores da marca</b>
+                <span className="rounded-full bg-[#FFF6E8] px-2 py-1 text-[#C77A08]">
+                  Em produção
+                </span>
+              </div>
+              <div className="mt-3 h-2 rounded-full bg-[#E7EAF0]">
+                <div className="h-2 w-2/3 rounded-full bg-[#FF263D]" />
+              </div>
+            </div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-lg border border-white/10 p-3">
+                <p className="text-[10px] font-bold text-slate-400">PASSO 02</p>
+                <p className="mt-2 text-sm font-bold text-white">
+                  Mover status
+                </p>
+                <p className="mt-1 text-xs text-slate-400">
+                  Pronto para revisão
+                </p>
+              </div>
+              <div className="rounded-lg bg-[#FF263D] p-3">
+                <p className="text-[10px] font-bold text-red-100">
+                  PASSO 03 · IA
+                </p>
+                <p className="mt-2 text-sm font-bold text-white">
+                  3 cortes encontrados
+                </p>
+                <p className="mt-1 text-xs text-red-100">Analisar vídeo</p>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
-      <span className="absolute left-4 top-12 -rotate-6 rounded-xl bg-white px-3 py-2 text-xs font-black shadow-lg">
-        LEGENDAS ✓
-      </span>
-      <span className="absolute bottom-7 right-0 rotate-6 rounded-xl bg-[#FFD84D] px-3 py-2 text-xs font-black shadow-lg">
-        CORTE 00:24
-      </span>
+      <div className="relative mt-3 flex items-center gap-3 px-2 pb-1 text-xs text-slate-300">
+        <span className="inline-flex size-7 items-center justify-center rounded-full bg-[#FF263D] text-white">
+          ▶
+        </span>
+        <span>Placeholder para vídeo demonstrativo em loop</span>
+      </div>
     </div>
   );
 }
 
 export default function Home() {
   return (
-    <main className="overflow-hidden bg-white text-[#111]">
+    <main className="min-h-screen bg-[#F7F8FA] text-[#17191F]">
       <ActivationStatus />
       <nav className="mx-auto flex h-20 max-w-7xl items-center justify-between px-6">
-        <a href="#inicio">
-          <Brand />
+        <a
+          href="#inicio"
+          className="flex items-center gap-3 font-black tracking-tight"
+        >
+          <Logo />
+          <span>rafaau</span>
         </a>
-        <div className="hidden items-center gap-8 text-sm font-semibold md:flex">
-          <a href="#trabalhos">Trabalhos</a>
-          <a href="#sobre">Como eu trabalho</a>
-          <a href="#neiva">Neiva Planner</a>
+        <div className="hidden items-center gap-7 text-sm font-medium text-[#68707D] md:flex">
+          <a className="hover:text-[#17191F]" href="#recursos">
+            O que entrega
+          </a>
+          <a className="hover:text-[#17191F]" href="#como-funciona">
+            Como funciona
+          </a>
+          <a className="hover:text-[#17191F]" href="#planos">
+            Planos
+          </a>
+          <a className="hover:text-[#17191F]" href="#download">
+            Baixar app
+          </a>
         </div>
         <a
-          href="#trabalhos"
-          className="rounded-full bg-[#6161FF] px-5 py-3 text-sm font-bold text-white transition hover:scale-105 hover:bg-[#4D4DDE]"
+          href="#planos"
+          className="rounded-lg bg-[#FF263D] px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#D91E32]"
         >
-          Ver projetos ↘
+          Começar agora
         </a>
       </nav>
 
       <section
         id="inicio"
-        className="relative mx-auto min-h-[720px] max-w-7xl px-6 pb-24 pt-20 text-center sm:pt-28"
+        className="mx-auto grid max-w-7xl gap-12 px-6 pb-20 pt-12 lg:grid-cols-[.95fr_1.05fr] lg:items-center lg:pt-20"
       >
-        <div className="absolute left-[4%] top-24 hidden -rotate-6 rounded-2xl bg-[#FFD84D] p-4 text-left shadow-lg lg:block">
-          <p className="text-[10px] font-black">EM PRODUÇÃO</p>
-          <p className="mt-1 font-extrabold">Site novo ✦</p>
+        <div>
+          <p className="mb-6 inline-flex rounded-full bg-[#FFF0F2] px-4 py-2 text-xs font-bold tracking-[.12em] text-[#9F1D2C]">
+            PLANEJAMENTO DE CONTEÚDO, SEM IMPROVISO
+          </p>
+          <h1 className="max-w-3xl text-5xl font-black leading-[.98] tracking-[-.055em] sm:text-6xl lg:text-7xl">
+            Você atende vários clientes e ainda se perde entre{' '}
+            <span className="text-[#FF263D]">
+              WhatsApp, planilhas e anotações?
+            </span>
+          </h1>
+          <p className="mt-7 max-w-2xl text-lg leading-8 text-[#68707D]">
+            O rafaau é para criadores, freelancers e pequenas agências que
+            precisam transformar demandas soltas em uma operação clara: o que
+            criar, para quem, em qual etapa e quando entregar.
+          </p>
+          <div className="mt-9 flex flex-wrap gap-3">
+            <a
+              href="#planos"
+              className="rounded-lg bg-[#FF263D] px-6 py-4 font-bold text-white shadow-lg shadow-red-200 transition hover:bg-[#D91E32]"
+            >
+              Quero organizar meu conteúdo
+            </a>
+            <a
+              href="#recursos"
+              className="rounded-lg border border-[#DDE1E7] bg-white px-6 py-4 font-bold text-[#17191F] transition hover:bg-[#F0F2F5]"
+            >
+              Ver o que está incluso
+            </a>
+          </div>
+          <p className="mt-4 text-sm font-medium text-[#68707D]">
+            <b className="text-[#17191F]">7 dias de teste grátis.</b> Sem
+            cobrança durante o período; cancele quando quiser.
+          </p>
+          <div className="mt-5 flex flex-wrap gap-x-6 gap-y-2 text-sm font-medium text-[#68707D]">
+            <span>✓ Sem organização manual</span>
+            <span>✓ Até 2 computadores</span>
+          </div>
         </div>
-        <div className="absolute right-[5%] top-40 hidden rotate-6 rounded-2xl bg-[#45D6E8] p-4 text-left shadow-lg lg:block">
-          <p className="text-[10px] font-black">AUTOMAÇÃO</p>
-          <p className="mt-1 font-extrabold">Menos trabalho manual.</p>
-        </div>
-        <p className="mx-auto mb-7 w-fit rounded-full border border-black/10 px-4 py-2 text-xs font-bold tracking-[.13em]">
-          DESIGN · CONTEÚDO · CÓDIGO
-        </p>
-        <h1 className="mx-auto max-w-5xl text-6xl font-extrabold leading-[.92] tracking-[-.065em] sm:text-7xl lg:text-[108px]">
-          Você lidera.
-          <br />
-          <span className="text-[#6161FF]">Eu executo.</span>
-        </h1>
-        <p className="mx-auto mt-8 max-w-2xl text-lg leading-8 text-black/60 sm:text-xl">
-          Transformo ideias em peças, vídeos, sites e automações que saem do
-          papel e entram na rotina.
-        </p>
-        <a
-          href="#trabalhos"
-          className="mt-10 inline-flex items-center gap-3 rounded-full bg-[#6161FF] px-8 py-5 text-base font-bold text-white shadow-xl shadow-indigo-200 transition hover:-translate-y-1 hover:bg-[#4D4DDE]"
-        >
-          Explorar meu trabalho <span>↓</span>
-        </a>
-        <div className="mx-auto mt-20 flex max-w-3xl flex-wrap items-center justify-center gap-3 text-sm font-bold">
-          <span className="rounded-full bg-[#FFE9F1] px-4 py-2">Flyers</span>
-          <span className="rounded-full bg-[#EAEAFF] px-4 py-2">
-            Automações
-          </span>
-          <span className="rounded-full bg-[#DDF9FC] px-4 py-2">Sites</span>
-          <span className="rounded-full bg-[#FFF0E9] px-4 py-2">Vídeos</span>
+        <div className="relative mx-auto w-full max-w-xl">
+          <div className="absolute -left-8 top-14 h-52 w-52 rounded-full bg-[#FF263D]/10 blur-3xl" />
+          <ProductVideoPlaceholder />
         </div>
       </section>
 
-      <section id="trabalhos" className="bg-black px-6 py-28 text-white">
-        <div className="mx-auto max-w-7xl">
-          <div className="grid gap-8 lg:grid-cols-[.8fr_1.2fr] lg:items-end">
-            <p className="text-sm font-bold tracking-[.16em] text-white/50">
-              O QUE EU COLOCO DE PÉ
-            </p>
-            <h2 className="text-5xl font-extrabold leading-[.95] tracking-[-.055em] sm:text-7xl">
-              Um repertório.
-              <br />
-              <span className="text-white/40">Várias entregas.</span>
-            </h2>
-          </div>
-          <div className="mt-16 grid gap-6 lg:grid-cols-2">
-            {projects.map((project) => (
-              <article
-                key={project.title}
-                className="group overflow-hidden rounded-[32px] p-7 transition duration-300 hover:-translate-y-2 sm:p-9"
-                style={{ backgroundColor: project.color, color: project.ink }}
+      <section className="border-y border-[#DDE1E7] bg-white">
+        <div className="mx-auto grid max-w-7xl grid-cols-2 gap-y-5 px-6 py-7 text-sm font-bold text-[#68707D] sm:grid-cols-4">
+          <span>PLANEJAMENTO</span>
+          <span>CLIENTES</span>
+          <span>TRELLO</span>
+          <span>VÍDEO + IA</span>
+        </div>
+      </section>
+
+      <section id="recursos" className="mx-auto max-w-7xl px-6 py-24">
+        <div className="max-w-3xl">
+          <p className="text-xs font-bold tracking-[.16em] text-[#FF263D]">
+            O QUE O RAFAAU ENTREGA
+          </p>
+          <h2 className="mt-4 text-4xl font-black tracking-[-.04em] sm:text-5xl">
+            Pare de gerenciar conteúdo por mensagens, anotações soltas e
+            memória.
+          </h2>
+          <p className="mt-5 text-lg leading-8 text-[#68707D]">
+            Tenha uma visão clara da operação e um processo repetível, do
+            primeiro briefing até o conteúdo publicado.
+          </p>
+        </div>
+        <div className="mt-12 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {features.map((feature) => (
+            <article
+              key={feature.title}
+              className="rounded-2xl border border-[#DDE1E7] bg-white p-6 transition hover:-translate-y-1 hover:shadow-lg"
+            >
+              <span
+                className={`inline-flex rounded-lg px-3 py-2 text-xs font-black ${feature.color}`}
               >
-                <div className="flex items-start justify-between gap-5">
-                  <div>
-                    <p className="text-[11px] font-black tracking-[.16em] opacity-60">
-                      {project.eyebrow}
-                    </p>
-                    <h3 className="mt-3 text-3xl font-extrabold tracking-[-.04em] sm:text-4xl">
-                      {project.title}
-                    </h3>
-                  </div>
-                  <span className="text-3xl transition group-hover:rotate-45">
-                    ↗
+                {feature.number}
+              </span>
+              <h3 className="mt-8 text-xl font-black">{feature.title}</h3>
+              <p className="mt-3 text-sm leading-6 text-[#68707D]">
+                {feature.text}
+              </p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="border-y border-[#DDE1E7] bg-white px-6 py-20">
+        <div className="mx-auto max-w-7xl">
+          <div className="flex flex-col justify-between gap-5 md:flex-row md:items-end">
+            <div>
+              <p className="text-xs font-bold tracking-[.16em] text-[#FF263D]">
+                PROVA SOCIAL
+              </p>
+              <h2 className="mt-3 text-3xl font-black tracking-[-.04em] sm:text-4xl">
+                Feito para quem vive da entrega de conteúdo.
+              </h2>
+            </div>
+            <p className="rounded-full bg-[#EAF7F1] px-4 py-2 text-sm font-bold text-[#168A5B]">
+              <span className="text-lg">XXX+</span> criadores organizando
+              conteúdo
+            </p>
+          </div>
+          <div className="mt-10 grid gap-4 md:grid-cols-3">
+            {testimonials.map((item) => (
+              <figure
+                key={item.name}
+                className="rounded-2xl border border-[#DDE1E7] bg-[#F7F8FA] p-6"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="inline-flex size-11 items-center justify-center rounded-full bg-[#17191F] text-sm font-black text-white">
+                    {item.initials}
                   </span>
+                  <figcaption>
+                    <b className="block">{item.name}</b>
+                    <span className="text-sm text-[#68707D]">{item.role}</span>
+                  </figcaption>
                 </div>
-                <p className="mt-4 max-w-lg leading-7 opacity-70">
-                  {project.description}
-                </p>
-                <div className="my-9">
-                  <ProjectVisual type={project.visual} />
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {project.tags.map((tag) => (
-                    <span
-                      key={tag}
-                      className="rounded-full border border-current/20 px-3 py-1.5 text-xs font-bold"
-                    >
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              </article>
+                <blockquote className="mt-6 text-base leading-7 text-[#4E5560]">
+                  “{item.quote}”
+                </blockquote>
+              </figure>
             ))}
           </div>
+          <p className="mt-5 text-xs text-[#68707D]">
+            Depoimentos ilustrativos — substitua pelos resultados reais dos seus
+            clientes.
+          </p>
         </div>
       </section>
 
-      <section id="sobre" className="bg-[#F2F0FF] px-6 py-28">
-        <div className="mx-auto grid max-w-7xl gap-16 lg:grid-cols-[1fr_1fr] lg:items-center">
+      <section
+        id="como-funciona"
+        className="bg-[#17191F] px-6 py-24 text-white"
+      >
+        <div className="mx-auto grid max-w-7xl gap-16 lg:grid-cols-[.82fr_1.18fr]">
           <div>
-            <p className="text-xs font-black tracking-[.16em] text-[#6161FF]">
-              DO BRIEFING AO ARQUIVO FINAL
+            <p className="text-xs font-bold tracking-[.16em] text-[#FF7C8A]">
+              UM FLUXO QUE A EQUIPE ENTENDE
             </p>
-            <h2 className="mt-5 text-5xl font-extrabold leading-[.96] tracking-[-.055em] sm:text-7xl">
-              Menos conversa solta.
-              <br />
-              Mais coisa pronta.
+            <h2 className="mt-5 text-4xl font-black tracking-[-.04em] sm:text-6xl">
+              Da ideia à entrega, sem perder contexto no caminho.
             </h2>
-            <p className="mt-7 max-w-xl text-lg leading-8 text-black/60">
-              Eu junto olhar visual, raciocínio de produto e execução técnica.
-              Isso reduz pontas soltas e acelera o caminho entre “seria legal” e
-              “está funcionando”.
+            <p className="mt-6 max-w-md leading-7 text-slate-300">
+              Você não compra apenas um calendário. Você ganha uma forma de
+              trabalhar que torna prioridades, prazos e produção visíveis.
             </p>
           </div>
-          <ol className="space-y-4">
-            {[
-              ['01', 'Entendo', 'O objetivo, o público e o que precisa mudar.'],
-              [
-                '02',
-                'Construo',
-                'A solução com direção visual e lógica clara.',
-              ],
-              ['03', 'Entrego', 'Tudo organizado, testado e pronto para uso.'],
-            ].map(([n, title, text], index) => (
-              <li
-                key={n}
-                className="flex gap-5 rounded-3xl bg-white p-6 shadow-sm"
-                style={{
-                  transform: `rotate(${index === 1 ? 1 : index === 2 ? -1 : 0}deg)`,
-                }}
-              >
-                <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-[#6161FF] font-black text-white">
-                  {n}
+          <ol className="divide-y divide-white/15">
+            {workflow.map(([title, description], index) => (
+              <li key={title} className="flex gap-5 py-7 first:pt-0">
+                <span className="text-2xl font-black text-[#FF5265]">
+                  0{index + 1}
                 </span>
                 <div>
-                  <h3 className="text-xl font-extrabold">{title}</h3>
-                  <p className="mt-1 text-black/55">{text}</p>
+                  <h3 className="text-xl font-bold">{title}</h3>
+                  <p className="mt-2 max-w-xl leading-7 text-slate-300">
+                    {description}
+                  </p>
                 </div>
               </li>
             ))}
@@ -325,142 +417,172 @@ export default function Home() {
         </div>
       </section>
 
-      <section id="neiva" className="px-6 py-28">
-        <div className="mx-auto max-w-7xl">
-          <div className="overflow-hidden rounded-[40px] bg-[#111] p-8 text-white sm:p-12 lg:p-16">
-            <div className="grid gap-12 lg:grid-cols-[1fr_.9fr] lg:items-center">
-              <div>
-                <span className="rounded-full bg-[#FF4F87] px-4 py-2 text-xs font-black">
-                  PRODUTO PRÓPRIO
+      <section id="planos" className="mx-auto max-w-7xl px-6 py-24">
+        <div className="text-center">
+          <p className="text-xs font-bold tracking-[.16em] text-[#FF263D]">
+            PLANOS PARA O SEU RITMO
+          </p>
+          <h2 className="mt-4 text-4xl font-black tracking-[-.04em] sm:text-5xl">
+            Comece com o processo que sua operação precisa.
+          </h2>
+          <p className="mx-auto mt-5 max-w-2xl text-[#68707D]">
+            Comece gratuitamente e avance quando precisar de mais clientes,
+            automação, vídeo e inteligência artificial.
+          </p>
+        </div>
+        <div className="mx-auto mt-12 grid max-w-6xl gap-5 md:grid-cols-3">
+          {plans.map((plan, index) => (
+            <article
+              key={plan.code}
+              className={`relative rounded-2xl border p-8 ${index === 1 ? 'border-[#FF263D] bg-white shadow-xl shadow-red-100' : 'border-[#DDE1E7] bg-white'}`}
+            >
+              {index === 1 && (
+                <span className="absolute -top-3 right-6 rounded-full bg-[#FF263D] px-3 py-1 text-xs font-bold text-white">
+                  MAIS ESCOLHIDO
                 </span>
-                <h2 className="mt-7 text-5xl font-extrabold tracking-[-.055em] sm:text-7xl">
-                  Neiva
-                  <br />
-                  <span className="text-[#8E8EFF]">Planner.</span>
-                </h2>
-                <p className="mt-6 max-w-xl text-lg leading-8 text-white/60">
-                  Planejamento editorial, clientes, Trello e produção de vídeos
-                  reunidos em um aplicativo para Windows.
-                </p>
-                <a
-                  href={DOWNLOAD_URL}
-                  className="mt-8 inline-flex rounded-full bg-white px-6 py-4 font-bold text-black transition hover:bg-[#FFD84D]"
-                >
-                  Baixar para Windows ↓
-                </a>
-              </div>
-              <div className="rotate-2 rounded-3xl bg-[#F7F7FA] p-4 text-[#111] shadow-2xl">
-                <div className="flex items-center gap-2 border-b border-black/10 pb-3">
-                  <i className="size-2 rounded-full bg-[#FF4F87]" />
-                  <i className="size-2 rounded-full bg-[#FFD84D]" />
-                  <i className="size-2 rounded-full bg-[#45D6E8]" />
-                  <b className="ml-auto text-xs">NEIVA PLANNER</b>
-                </div>
-                <div className="mt-4 grid grid-cols-3 gap-3">
-                  <div className="rounded-2xl bg-[#EAEAFF] p-4">
-                    <small>CLIENTES</small>
-                    <strong className="mt-2 block text-3xl">12</strong>
-                  </div>
-                  <div className="rounded-2xl bg-[#FFF1D0] p-4">
-                    <small>CONTEÚDOS</small>
-                    <strong className="mt-2 block text-3xl">48</strong>
-                  </div>
-                  <div className="rounded-2xl bg-[#DDF9FC] p-4">
-                    <small>PRONTOS</small>
-                    <strong className="mt-2 block text-3xl">31</strong>
-                  </div>
-                </div>
-                <div className="mt-3 h-32 rounded-2xl bg-white p-4">
-                  <div className="h-3 w-1/3 rounded bg-black/10" />
-                  <div className="mt-5 grid grid-cols-5 gap-2">
-                    {[1, 2, 3, 4, 5].map((n) => (
-                      <i
-                        key={n}
-                        className={`h-14 rounded-lg ${n === 3 ? 'bg-[#6161FF]' : 'bg-black/5'}`}
-                      />
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div id="planos" className="mt-24 text-center">
-            <p className="text-xs font-black tracking-[.16em] text-[#6161FF]">
-              PLANOS DO NEIVA
-            </p>
-            <h2 className="mt-4 text-4xl font-extrabold tracking-[-.05em] sm:text-6xl">
-              Escolha o seu ritmo.
-            </h2>
-          </div>
-          <div className="mt-12 grid gap-5 md:grid-cols-3">
-            {plans.map((plan, index) => (
-              <article
-                key={plan.code}
-                className={`rounded-[28px] border p-7 ${index === 1 ? 'border-[#6161FF] bg-[#F2F0FF] shadow-xl shadow-indigo-100' : 'border-black/10 bg-white'}`}
+              )}
+              <p className="text-sm font-bold text-[#68707D]">RAFAAU</p>
+              <h3 className="mt-1 text-3xl font-black">{plan.name}</h3>
+              <p className="mt-7 text-5xl font-black tracking-tight">
+                <small className="text-base">R$</small> {plan.price}
+                <small className="text-base font-medium text-[#68707D]">
+                  /mês
+                </small>
+              </p>
+              <p className="mt-2 text-sm text-[#68707D]">
+                {plan.annual ? `R$ ${plan.annual}/mês no plano anual` : 'Grátis para sempre'}
+              </p>
+              <div
+                className={`mt-6 rounded-xl p-4 ${index === 1 ? 'bg-[#FFF0F2]' : 'bg-[#F0F2F5]'}`}
               >
-                <div className="flex items-start justify-between">
-                  <div className="text-left">
-                    <p className="text-xs font-black uppercase tracking-widest text-black/40">
-                      {plan.note}
-                    </p>
-                    <h3 className="mt-2 text-3xl font-extrabold">
-                      {plan.name}
-                    </h3>
-                  </div>
-                  {index === 1 && (
-                    <span className="rounded-full bg-[#6161FF] px-3 py-1 text-[10px] font-black text-white">
-                      POPULAR
-                    </span>
-                  )}
-                </div>
-                <p className="mt-8 text-left text-5xl font-extrabold">
-                  <small className="text-base">R$</small> {plan.price}
-                  <small className="text-sm font-medium text-black/40">
-                    /mês
-                  </small>
+                <p className="text-xs font-bold tracking-wide text-[#9F1D2C]">
+                  CRÉDITOS DE IA
                 </p>
-                <CheckoutButton plan={plan.code} featured={index === 1} />
-                <ul className="mt-6 space-y-3 border-t border-black/10 pt-6 text-left text-sm text-black/60">
-                  {plan.features.map((feature) => (
-                    <li key={feature}>✓ {feature}</li>
-                  ))}
-                </ul>
-              </article>
+                <p className="mt-1 text-3xl font-black">
+                  {plan.credits}{' '}
+                  {plan.code !== 'free' && <span className="text-sm font-semibold text-[#68707D]">por mês</span>}
+                </p>
+                <p className="mt-2 text-sm leading-5 text-[#4E5560]">
+                  {plan.use} {plan.code !== 'free' && '1 crédito = 1 análise de vídeo para sugerir cortes.'}
+                </p>
+              </div>
+              <CheckoutButton plan={plan.code} featured={index === 1} />
+              <ul className="mt-7 space-y-3 border-t border-[#DDE1E7] pt-6 text-sm text-[#4E5560]">
+                {plan.features.map((feature) => <li key={feature}>✓ {feature}</li>)}
+              </ul>
+            </article>
+          ))}
+        </div>
+        <p className="mt-8 text-center text-sm text-[#68707D]">
+          O Essencial é a melhor escolha para social medias autônomos. O Pro atende operações de maior volume.
+        </p>
+      </section>
+
+      <section id="download" className="mx-auto max-w-7xl px-6 py-20">
+        <div className="flex flex-col gap-7 rounded-3xl border border-[#DDE1E7] bg-white p-8 shadow-sm sm:p-10 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-xs font-bold tracking-[.16em] text-[#FF263D]">
+              APLICATIVO PARA WINDOWS
+            </p>
+            <h2 className="mt-3 text-3xl font-black tracking-[-.04em] sm:text-4xl">
+              Já assinou? Baixe o rafaau.
+            </h2>
+            <p className="mt-3 max-w-2xl leading-7 text-[#68707D]">
+              Instale o aplicativo no seu computador e comece a organizar
+              clientes, conteúdos e produção. O download é feito pelo release
+              oficial do rafaau.
+            </p>
+          </div>
+          <div className="shrink-0">
+            <a
+              href={DOWNLOAD_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#17191F] px-6 py-4 font-bold text-white transition hover:bg-[#343841] sm:w-auto"
+            >
+              <span aria-hidden="true">↓</span> Baixar para Windows
+            </a>
+            <p className="mt-3 text-center text-xs text-[#68707D]">
+              Arquivo .exe • Windows 10 ou superior
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section
+        id="faq"
+        className="border-y border-[#DDE1E7] bg-white px-6 py-24"
+      >
+        <div className="mx-auto grid max-w-7xl gap-12 lg:grid-cols-[.7fr_1.3fr]">
+          <div>
+            <p className="text-xs font-bold tracking-[.16em] text-[#FF263D]">
+              PERGUNTAS FREQUENTES
+            </p>
+            <h2 className="mt-4 text-4xl font-black tracking-[-.04em]">
+              Sem letra pequena.
+            </h2>
+            <p className="mt-5 leading-7 text-[#68707D]">
+              Tudo o que você precisa saber antes de começar a organizar sua
+              operação.
+            </p>
+          </div>
+          <div className="divide-y divide-[#DDE1E7] border-y border-[#DDE1E7]">
+            {faqs.map(([question, answer]) => (
+              <details key={question} className="group py-5">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 font-bold">
+                  <span>{question}</span>
+                  <span className="text-xl text-[#FF263D] transition group-open:rotate-45">
+                    +
+                  </span>
+                </summary>
+                <p className="max-w-2xl pt-3 leading-7 text-[#68707D]">
+                  {answer}
+                </p>
+              </details>
             ))}
           </div>
         </div>
       </section>
 
-      <section className="bg-[#6161FF] px-6 py-24 text-white">
-        <div className="mx-auto flex max-w-7xl flex-col gap-10 lg:flex-row lg:items-end lg:justify-between">
+      <section className="bg-[#FF263D] px-6 py-20 text-white">
+        <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[1.2fr_.8fr] lg:items-center">
           <div>
-            <p className="text-xs font-black tracking-[.16em] text-white/60">
-              TEM UMA IDEIA?
+            <p className="text-xs font-bold tracking-[.16em] text-red-100">
+              PRONTO PARA SAIR DO CAOS?
             </p>
-            <h2 className="mt-5 max-w-4xl text-5xl font-extrabold leading-[.95] tracking-[-.055em] sm:text-7xl">
-              Vamos tirar isso
-              <br />
-              do “um dia”.
+            <h2 className="mt-4 text-4xl font-black tracking-[-.04em] sm:text-6xl">
+              Seu conteúdo merece um processo que funciona todos os dias.
             </h2>
+            <blockquote className="mt-7 border-l-2 border-white/50 pl-4 text-lg leading-7 text-red-50">
+              “Hoje sei o que entregar para cada cliente antes da semana
+              começar.”{' '}
+              <cite className="mt-2 block text-sm not-italic text-red-100">
+                — Marina Costa, social media freelancer
+              </cite>
+            </blockquote>
           </div>
-          <a
-            href="mailto:contato@rafaau.site"
-            className="shrink-0 rounded-full bg-white px-8 py-5 font-extrabold text-[#3333B8] transition hover:-translate-y-1 hover:bg-[#FFD84D]"
-          >
-            Fale comigo ↗
-          </a>
+          <div className="rounded-2xl bg-white/10 p-7 backdrop-blur-sm">
+            <p className="text-lg font-bold">Comece com 7 dias grátis.</p>
+            <p className="mt-2 text-sm leading-6 text-red-100">
+              Conheça o rafaau sem cobrança durante o teste e cancele quando
+              quiser.
+            </p>
+            <a
+              href="#planos"
+              className="mt-6 block rounded-lg bg-white px-7 py-4 text-center font-bold text-[#9F1D2C] transition hover:bg-[#F7F8FA]"
+            >
+              Escolher meu plano
+            </a>
+          </div>
         </div>
       </section>
-      <footer className="bg-black px-6 py-10 text-white">
-        <div className="mx-auto flex max-w-7xl flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-          <Brand />
-          <p className="text-sm text-white/40">
-            Design, conteúdo e tecnologia — © 2026
-          </p>
-          <a href="#inicio" className="text-sm font-bold">
-            Voltar ao topo ↑
-          </a>
+
+      <footer className="mx-auto flex max-w-7xl flex-col gap-4 px-6 py-10 text-sm text-[#68707D] md:flex-row md:items-center md:justify-between">
+        <div className="flex items-center gap-2 font-black text-[#17191F]">
+          <Logo /> rafaau
         </div>
+        <span>© 2026 rafaau. Conteúdo com direção.</span>
+        <span>Termos · Privacidade</span>
       </footer>
     </main>
   );
