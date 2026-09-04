@@ -3,11 +3,17 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
-from content_planner.database import Client, Database, Post
+from content_planner.database import DATABASE_DIR, Client, Database, Post, account_database_path
 
 
 class DatabaseTests(unittest.TestCase):
+    def test_default_database_is_isolated_by_account(self) -> None:
+        with patch("content_planner.account_sessions.current_account", return_value=SimpleNamespace(account_id="42")):
+            self.assertEqual(account_database_path(), DATABASE_DIR / "accounts" / "42" / "content_planner.db")
+
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
         self.database = Database(Path(self.temp_dir.name) / "planner.db")

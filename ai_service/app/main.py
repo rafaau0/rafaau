@@ -60,6 +60,7 @@ class Client(Base):
     monthly_limit: Mapped[int] = mapped_column(Integer, default=30)
     account_id: Mapped[int | None] = mapped_column(ForeignKey("accounts.id"), nullable=True, index=True)
     device_limit: Mapped[int] = mapped_column(Integer, default=2)
+    plan_code: Mapped[str] = mapped_column(String(30), default="legacy")
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
@@ -222,8 +223,9 @@ class AppLoginRequest(AccountLoginRequest):
 
 
 PLANS = {
-    "essencial": {"name": "Neiva Essencial", "monthly_price": 49.90, "ai_credits": 20, "devices": 2},
-    "pro": {"name": "Neiva Pro", "monthly_price": 89.90, "ai_credits": 80, "devices": 2},
+    "free": {"name": "Neiva Grátis", "monthly_price": 0, "ai_credits": 0, "devices": 1, "clients": 1},
+    "essencial": {"name": "Neiva Essencial", "monthly_price": 49.90, "ai_credits": 20, "devices": 2, "clients": 10},
+    "pro": {"name": "Neiva Pro", "monthly_price": 89.90, "ai_credits": 80, "devices": 3, "clients": None},
 }
 
 
@@ -305,6 +307,15 @@ def activate_paid_order(session: Session, order: CheckoutOrder) -> None:
         order.status = "paid"
         return
     plan = PLANS[order.plan_code]
+    existing_client = session.scalar(select(Client).where(Client.account_id == order.account_id)) if order.account_id else None
+    if existing_client:
+        existing_client.monthly_limit = plan["ai_credits"]
+        existing_client.device_limit = plan["devices"]
+        existing_client.plan_code = order.plan_code
+        existing_client.active = True
+        order.client_id = existing_client.id
+        order.status = "paid"
+        return
     # Pedidos antigos continuam recebendo codigo de ativacao. Pedidos feitos
     # por uma conta nova passam a usar login e nao precisam de codigo.
     activation_code = new_activation_code() if order.account_id is None else None
@@ -314,6 +325,7 @@ def activate_paid_order(session: Session, order: CheckoutOrder) -> None:
         monthly_limit=plan["ai_credits"],
         account_id=order.account_id,
         device_limit=plan["devices"],
+        plan_code=order.plan_code,
         active=True,
     )
     session.add(client)
@@ -368,6 +380,8 @@ def current_account(
 
 
 def consume_quota(session: Session, client: Client) -> None:
+    if client.plan_code == "free":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="A análise com IA está disponível nos planos Essencial e Pro.")
     period = datetime.now(timezone.utc).strftime("%Y-%m")
     usage = session.scalar(select(MonthlyUsage).where(MonthlyUsage.client_id == client.id, MonthlyUsage.period == period))
     if usage is None:
@@ -450,7 +464,7 @@ def initialize_database() -> None:
     # create_all nao adiciona colunas em tabelas que ja existiam no PostgreSQL.
     # Estas alteracoes sao aditivas e preservam todas as licencas anteriores.
     additions = {
-        "clients": {"account_id": "INTEGER", "device_limit": "INTEGER DEFAULT 2"},
+        "clients": {"account_id": "INTEGER", "device_limit": "INTEGER DEFAULT 2", "plan_code": "VARCHAR(30) DEFAULT 'legacy'"},
         "device_tokens": {"device_id": "VARCHAR(120)", "last_seen_at": "TIMESTAMP"},
         "checkout_orders": {"account_id": "INTEGER"},
     }
@@ -474,8 +488,30 @@ def account_response(account: Account, client: Client | None = None) -> dict:
         "name": account.name,
         "email": account.email,
         "license_active": bool(client and client.active),
-        "plan": None if client is None else next((code for code, details in PLANS.items() if details["ai_credits"] == client.monthly_limit), None),
+        "plan": None if client is None else (client.plan_code if client.plan_code != "legacy" else next((code for code, details in PLANS.items() if details["ai_credits"] == client.monthly_limit), "pro")),
     }
+
+
+def ensure_free_client(session: Session, account: Account) -> Client:
+    client = session.scalar(select(Client).where(Client.account_id == account.id))
+    if client:
+        if not client.active:
+            plan = PLANS["free"]
+            client.active = True
+            client.plan_code = "free"
+            client.monthly_limit = plan["ai_credits"]
+            client.device_limit = plan["devices"]
+        return client
+    plan = PLANS["free"]
+    client = Client(
+        name=f"{account.name} [free-{account.id}]",
+        token_hash=token_hash(f"neiva_{secrets.token_urlsafe(32)}"),
+        monthly_limit=plan["ai_credits"], account_id=account.id,
+        device_limit=plan["devices"], plan_code="free", active=True,
+    )
+    session.add(client)
+    session.flush()
+    return client
 
 
 @app.post("/v1/auth/register", status_code=status.HTTP_201_CREATED)
@@ -485,9 +521,10 @@ def register_account(payload: AccountRegisterRequest, session: Session = Depends
     account = Account(name=payload.name, email=payload.email, password_hash=password_hash(payload.password))
     session.add(account)
     session.flush()
+    client = ensure_free_client(session, account)
     access_token = new_account_session(session, account)
     session.commit()
-    return {"account": account_response(account), "access_token": access_token, "token_type": "bearer"}
+    return {"account": account_response(account, client), "access_token": access_token, "token_type": "bearer"}
 
 
 @app.post("/v1/auth/sign-in")
@@ -495,7 +532,7 @@ def sign_in_account(payload: AccountLoginRequest, session: Session = Depends(db_
     account = session.scalar(select(Account).where(Account.email == payload.email))
     if not account or not account.active or not verify_password(payload.password, account.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="E-mail ou senha incorretos.")
-    client = session.scalar(select(Client).where(Client.account_id == account.id, Client.active.is_(True)))
+    client = ensure_free_client(session, account)
     access_token = new_account_session(session, account)
     session.commit()
     return {"account": account_response(account, client), "access_token": access_token, "token_type": "bearer"}
@@ -506,9 +543,7 @@ def app_login(payload: AppLoginRequest, session: Session = Depends(db_session)) 
     account = session.scalar(select(Account).where(Account.email == payload.email))
     if not account or not account.active or not verify_password(payload.password, account.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="E-mail ou senha incorretos.")
-    client = session.scalar(select(Client).where(Client.account_id == account.id, Client.active.is_(True)))
-    if not client:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sua assinatura ainda nao esta ativa. Aguarde a aprovacao do pagamento.")
+    client = ensure_free_client(session, account)
     device = session.scalar(select(DeviceToken).where(DeviceToken.client_id == client.id, DeviceToken.device_id == payload.device_id))
     if device is None:
         active_devices = session.scalars(select(DeviceToken).where(DeviceToken.client_id == client.id, DeviceToken.device_id.is_not(None))).all()
@@ -553,6 +588,8 @@ def _oauth_expired(value: datetime) -> bool:
 @app.post("/v1/integrations/trello/start")
 def start_trello_oauth(client: Client = Depends(current_client), session: Session = Depends(db_session)) -> dict[str, str]:
     """Inicia OAuth 1.0; o segredo do aplicativo nunca é enviado ao desktop."""
+    if client.plan_code == "free":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="A integração com Trello está disponível nos planos Essencial e Pro.")
     api_key, api_secret = trello_credentials()
     public_id = secrets.token_urlsafe(24)
     public_api_url = os.getenv("PUBLIC_API_URL", "https://neiva-ai-api.onrender.com").rstrip("/")
@@ -715,7 +752,9 @@ def create_checkout(
     plan = PLANS.get(payload.plan_code)
     api_key = os.getenv("ASAAS_API_KEY", "")
     base_url = os.getenv("ASAAS_BASE_URL", "").rstrip("/")
-    if not plan or not api_key or not base_url:
+    if not plan or payload.plan_code == "free":
+        raise HTTPException(status_code=400, detail="O plano Grátis não exige checkout.")
+    if not api_key or not base_url:
         raise HTTPException(status_code=503, detail="Checkout ainda não configurado.")
     claim_token = secrets.token_urlsafe(32)
     checkout_order = CheckoutOrder(

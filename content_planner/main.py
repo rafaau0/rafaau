@@ -15,14 +15,21 @@ def main() -> None:
             from .account_login import require_login
         except ImportError:
             from content_planner.account_login import require_login
-        if not require_login():
-            return
-        try:
-            from .ui import ContentPlannerApp
-        except ImportError:
-            from content_planner.ui import ContentPlannerApp
-        app = ContentPlannerApp()
-        app.mainloop()
+        force_login = False
+        while True:
+            if not require_login(force=force_login):
+                return
+            force_login = False
+            try:
+                from .ui import ContentPlannerApp
+            except ImportError:
+                from content_planner.ui import ContentPlannerApp
+            app = ContentPlannerApp()
+            app.mainloop()
+            action = getattr(app, "auth_action", None)
+            if action not in {"add", "switch", "logout"}:
+                return
+            force_login = action == "add"
     except Exception as exc:
         import traceback
         logging.exception("Falha não tratada ao iniciar o aplicativo")

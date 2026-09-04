@@ -69,12 +69,22 @@ const workflow = [
 
 const plans = [
   {
+    code: 'free',
+    name: 'Grátis',
+    price: '0',
+    annual: '',
+    credits: 'Não incluída',
+    use: 'Para conhecer o planejamento editorial.',
+    features: ['1 cliente e 15 conteúdos por mês', '1 PDF por mês', 'Calendário e dashboard', 'Sem Trello, vídeo ou encartes'],
+  },
+  {
     code: 'essencial',
     name: 'Essencial',
     price: '49,90',
     annual: '39,90',
     credits: '20',
     use: 'Para quem analisa alguns vídeos por mês.',
+    features: ['Até 10 clientes', 'Conteúdos e PDFs ilimitados', 'Trello, vídeos e encartes', 'Uso em até 2 computadores'],
   },
   {
     code: 'pro',
@@ -83,6 +93,7 @@ const plans = [
     annual: '69,90',
     credits: '80',
     use: 'Para quem produz para vários clientes ou publica toda semana.',
+    features: ['Clientes e conteúdos ilimitados', 'Trello, vídeos e encartes', 'Maior volume de IA', 'Uso em até 3 computadores'],
   },
 ];
 
@@ -96,8 +107,8 @@ const faqs = [
     'Você pode cancelar quando quiser. O acesso permanece disponível até o fim do período já pago, sem multa de cancelamento.',
   ],
   [
-    'O que significa usar em até 2 computadores?',
-    'A mesma conta pode ser usada em até dois computadores seus ou do seu time. Isso permite trabalhar no notebook e no desktop sem comprar outra assinatura.',
+    'Em quantos computadores posso usar?',
+    'O plano Grátis permite 1 computador, o Essencial permite 2 e o Pro permite até 3 computadores.',
   ],
   [
     'Funciona para equipes maiores?',
@@ -415,11 +426,11 @@ export default function Home() {
             Comece com o processo que sua operação precisa.
           </h2>
           <p className="mx-auto mt-5 max-w-2xl text-[#68707D]">
-            Todos os planos incluem calendário, clientes, Trello, estúdio de
-            vídeo e uso em até dois computadores.
+            Comece gratuitamente e avance quando precisar de mais clientes,
+            automação, vídeo e inteligência artificial.
           </p>
         </div>
-        <div className="mx-auto mt-12 grid max-w-4xl gap-5 md:grid-cols-2">
+        <div className="mx-auto mt-12 grid max-w-6xl gap-5 md:grid-cols-3">
           {plans.map((plan, index) => (
             <article
               key={plan.code}
@@ -439,7 +450,7 @@ export default function Home() {
                 </small>
               </p>
               <p className="mt-2 text-sm text-[#68707D]">
-                R$ {plan.annual}/mês no plano anual
+                {plan.annual ? `R$ ${plan.annual}/mês no plano anual` : 'Grátis para sempre'}
               </p>
               <div
                 className={`mt-6 rounded-xl p-4 ${index === 1 ? 'bg-[#FFF0F2]' : 'bg-[#F0F2F5]'}`}
@@ -449,26 +460,21 @@ export default function Home() {
                 </p>
                 <p className="mt-1 text-3xl font-black">
                   {plan.credits}{' '}
-                  <span className="text-sm font-semibold text-[#68707D]">
-                    por mês
-                  </span>
+                  {plan.code !== 'free' && <span className="text-sm font-semibold text-[#68707D]">por mês</span>}
                 </p>
                 <p className="mt-2 text-sm leading-5 text-[#4E5560]">
-                  {plan.use} 1 crédito = 1 análise de vídeo para sugerir cortes.
+                  {plan.use} {plan.code !== 'free' && '1 crédito = 1 análise de vídeo para sugerir cortes.'}
                 </p>
               </div>
               <CheckoutButton plan={plan.code} featured={index === 1} />
               <ul className="mt-7 space-y-3 border-t border-[#DDE1E7] pt-6 text-sm text-[#4E5560]">
-                <li>✓ Planner e calendário completos</li>
-                <li>✓ Gestão de clientes e conteúdos</li>
-                <li>✓ Integração com Trello</li>
-                <li>✓ Estúdio de vídeo e legendas</li>
+                {plan.features.map((feature) => <li key={feature}>✓ {feature}</li>)}
               </ul>
             </article>
           ))}
         </div>
         <p className="mt-8 text-center text-sm text-[#68707D]">
-          O Pro entrega 4× mais análises de IA para quem produz em volume.
+          O Essencial é a melhor escolha para social medias autônomos. O Pro atende operações de maior volume.
         </p>
       </section>
 

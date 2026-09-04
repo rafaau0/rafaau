@@ -12,13 +12,16 @@ export function ActivationStatus() {
     const order = params.get('order');
     if (params.get('checkout') !== 'success' || !order) return;
     const claim = localStorage.getItem(`neiva-order-${order}`);
-    if (!claim) { setMessage('Pagamento enviado. Assim que for aprovado, entre no aplicativo com seu e-mail e senha.'); return; }
+    if (!claim) {
+      window.setTimeout(() => setMessage('Pagamento enviado. Assim que for aprovado, entre no aplicativo com seu e-mail e senha.'), 0);
+      return;
+    }
     let cancelled = false;
     let attempts = 0;
     const check = async () => {
       try {
         const response = await fetch(`${API_URL}/v1/billing/orders/${encodeURIComponent(order)}?claim=${encodeURIComponent(claim)}`);
-        const data = await response.json();
+        const data = await response.json() as { license_active?: boolean };
         if (cancelled) return;
         if (data.license_active) { setMessage('Pagamento confirmado. Sua licenca esta ativa: abra o rafaau e entre com seu e-mail e senha.'); return; }
         attempts += 1;
@@ -28,7 +31,7 @@ export function ActivationStatus() {
         if (!cancelled) setMessage('Pagamento enviado. Aguarde a confirmacao e entre no aplicativo com sua conta.');
       }
     };
-    check();
+    void check();
     return () => { cancelled = true; };
   }, []);
   if (!message) return null;

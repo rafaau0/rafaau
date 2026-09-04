@@ -4,17 +4,16 @@ from __future__ import annotations
 import re
 import secrets
 import threading
-import webbrowser
 from queue import Empty, Queue
 
 import customtkinter as ctk
 import requests
 
 from .secrets import get_secret, set_secret
+from .account_sessions import current_token, save_account
 
 
 API_URL = "https://neiva-ai-api.onrender.com"
-SITE_URL = "https://rafaau.site"
 UI = {"canvas": "#F7F8FA", "surface": "#FFFFFF", "text": "#17191F", "muted": "#68707D", "accent": "#FF263D", "accent_hover": "#D91E32", "border": "#DDE1E7", "error": "#C92A3D"}
 
 
@@ -28,12 +27,17 @@ def _device_id() -> str:
 
 
 def saved_session_is_valid() -> bool:
-    token = get_secret("NEIVA_AI_CLIENT_TOKEN")
+    token = current_token()
     if not token:
         return False
     try:
         response = requests.get(f"{API_URL}/v1/auth/session", headers={"Authorization": f"Bearer {token}"}, timeout=8)
-        return response.ok and bool(response.json().get("license_active"))
+        if not response.ok or not response.json().get("license_active"):
+            return False
+        data = response.json()
+        if data.get("account"):
+            save_account(data["account"], token)
+        return True
     except requests.RequestException:
         return False
 
@@ -139,7 +143,7 @@ class LoginWindow(ctk.CTk):
         self.signup_error = self._message(self.signup_form)
         self.signup_button = ctk.CTkButton(self.signup_form, text="CRIAR CONTA", height=41, fg_color=UI["accent"], hover_color=UI["accent_hover"], command=self._submit_signup)
         self.signup_button.pack(fill="x", padx=46, pady=(10, 8))
-        ctk.CTkLabel(self.signup_form, text="Depois de criar sua conta, escolha um plano para ativar a licença.", text_color=UI["muted"], wraplength=300, justify="center", font=ctk.CTkFont(size=11)).pack(padx=35, pady=(0, 16))
+        ctk.CTkLabel(self.signup_form, text="Sua conta começa no plano Grátis. Você pode fazer upgrade quando quiser.", text_color=UI["muted"], wraplength=300, justify="center", font=ctk.CTkFont(size=11)).pack(padx=35, pady=(0, 16))
 
     def _build_slider(self) -> None:
         self.slider = ctk.CTkFrame(self.card, fg_color=UI["accent"], corner_radius=18)
@@ -208,8 +212,7 @@ class LoginWindow(ctk.CTk):
                 except ValueError: detail = response.text
                 raise RuntimeError(detail or "Não foi possível entrar.")
             data = response.json()
-            set_secret("NEIVA_AI_CLIENT_TOKEN", data["access_token"])
-            set_secret("NEIVA_ACCOUNT_EMAIL", email)
+            save_account(data["account"], data["access_token"])
             self._result_queue.put(("login_success", ""))
         except Exception as exc:
             self._result_queue.put(("login_error", str(exc)))
@@ -235,8 +238,8 @@ class LoginWindow(ctk.CTk):
             self._result_queue.put(("signup_error", str(exc)))
 
     def _signup_success(self, email: str) -> None:
-        self.signup_error.configure(text="Conta criada. Escolha um plano para ativar sua licença.", text_color="#168A5B")
-        self.signup_button.configure(state="normal", text="ABRIR PLANOS", command=lambda: webbrowser.open(SITE_URL + "#planos"))
+        self.signup_error.configure(text="Conta criada no plano Grátis. Entre para começar.", text_color="#168A5B")
+        self.signup_button.configure(state="normal", text="ENTRAR NA MINHA CONTA", command=self._toggle_slider)
         self.login_email.delete(0, "end"); self.login_email.insert(0, email)
 
     def _show_legacy_prompt(self) -> None:
@@ -264,8 +267,8 @@ class LoginWindow(ctk.CTk):
         self.destroy()
 
 
-def require_login() -> bool:
-    if saved_session_is_valid():
+def require_login(force: bool = False) -> bool:
+    if not force and saved_session_is_valid():
         return True
     window = LoginWindow()
     window.mainloop()

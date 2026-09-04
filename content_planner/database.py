@@ -18,6 +18,18 @@ else:
 DATABASE_PATH = DATABASE_DIR / "content_planner.db"
 
 
+def account_database_path() -> Path:
+    """Retorna um banco isolado por conta, preservando instalações legadas."""
+    try:
+        from .account_sessions import current_account
+        account = current_account()
+    except Exception:
+        account = None
+    if account is None:
+        return DATABASE_PATH
+    return DATABASE_DIR / "accounts" / account.account_id / "content_planner.db"
+
+
 @dataclass(slots=True)
 class Client:
     id: int | None
@@ -44,19 +56,25 @@ class Post:
 
 
 class Database:
-    def __init__(self, db_path: Path = DATABASE_PATH) -> None:
-        self.db_path = db_path
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+    def __init__(self, db_path: Path | None = None) -> None:
+        self.db_path = db_path or account_database_path()
         self._migrate_legacy_database()
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.initialize()
 
     def _migrate_legacy_database(self) -> None:
         """Preserva bancos de versões portáteis anteriores ao mudar para LocalAppData."""
-        if not getattr(sys, "frozen", False) or self.db_path.exists():
+        if self.db_path.exists() or self.db_path == DATABASE_PATH:
             return
-        legacy_path = ROOT_DIR / "database" / "content_planner.db"
-        if legacy_path.is_file() and legacy_path.resolve() != self.db_path.resolve():
+        marker = DATABASE_DIR / ".account_migration_complete"
+        candidates = [DATABASE_PATH]
+        if getattr(sys, "frozen", False):
+            candidates.append(ROOT_DIR / "database" / "content_planner.db")
+        legacy_path = next((path for path in candidates if path.is_file()), None)
+        if legacy_path and not marker.exists():
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(legacy_path, self.db_path)
+            marker.touch()
 
     @contextmanager
     def connect(self) -> Iterable[sqlite3.Connection]:
@@ -250,6 +268,11 @@ class Database:
                 (client_id, f"{prefix}-%"),
             ).fetchall()
         return [self._row_to_post(row) for row in rows]
+
+    def count_posts_month(self, year: int, month: int) -> int:
+        prefix = f"{year:04d}-{month:02d}-%"
+        with self.connect() as conn:
+            return int(conn.execute("SELECT COUNT(*) FROM posts WHERE post_date LIKE ?", (prefix,)).fetchone()[0])
 
     def get_posts_for_day(self, client_id: int, post_date: str) -> list[Post]:
         with self.connect() as conn:

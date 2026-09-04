@@ -24,6 +24,9 @@ from .clip_finder import ClipSuggestion, find_suggestions
 from .clip_ai import analyze_cuts
 from .encarte_service import export_files as export_encarte_files, extract_photos, generate as generate_encarte, prepare as prepare_encarte
 from .secrets import get_secret, set_secret
+from .account_manager import AccountManagerDialog
+from .account_sessions import current_account
+from .plan_rules import current_plan_rules
 from .silence_editor import SilenceSettings, apply_cuts, detect_silences, output_segments, plan_cuts, remap_subtitles
 
 
@@ -31,6 +34,7 @@ CONTENT_TYPES = ["Reels", "Story", "Carrossel", "Feed", "Promoção"]
 PLATFORMS = ["Instagram", "Facebook", "TikTok", "LinkedIn", "YouTube", "Pinterest"]
 STATUSES = ["Pendente", "Em andamento", "Concluído"]
 NEIVA_AI_API_URL = "https://neiva-ai-api.onrender.com"
+SITE_URL = "https://rafaau.site"
 MONTHS = [
     "Janeiro",
     "Fevereiro",
@@ -85,6 +89,8 @@ class ContentPlannerApp(ctk.CTk):
         self.video_project: VideoProject | None = None
         self.video_busy = False
         self.video_studio_section = "Importar"
+        self.auth_action: str | None = None
+        self.plan = current_plan_rules()
 
         ctk.set_appearance_mode("light")
         theme_path = _asset_path("neiva_light.json")
@@ -163,13 +169,37 @@ class ContentPlannerApp(ctk.CTk):
             button.pack(fill="x", padx=18, pady=6)
             self.nav_buttons.append(button)
 
-        ctk.CTkLabel(
+        account = current_account()
+        account_name = account.name if account else "Conta Neiva"
+        account_email = f"{account.email}  ·  {self.plan.name}" if account else "Gerenciar conta"
+        ctk.CTkButton(
             sidebar,
-            text="Planejamento editorial,\nprodução e aprovação\nem um só lugar.",
-            justify="left",
-            text_color=UI["muted"],
-            font=ctk.CTkFont(family="Segoe UI", size=11),
-        ).pack(side="bottom", padx=22, pady=24, anchor="w")
+            text=f"{account_name}\n{account_email}",
+            anchor="w",
+            height=58,
+            fg_color=UI["surface_alt"],
+            hover_color=UI["secondary"],
+            text_color=UI["text"],
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+            command=self._open_account_manager,
+        ).pack(side="bottom", fill="x", padx=18, pady=20)
+
+    def _open_account_manager(self) -> None:
+        AccountManagerDialog(self, self._restart_for_account)
+
+    def _restart_for_account(self, action: str) -> None:
+        self.auth_action = action
+        self.destroy()
+
+    def _require_feature(self, feature: str, label: str) -> bool:
+        if getattr(self.plan, feature):
+            return True
+        if messagebox.askyesno(
+            f"{label} · Recurso premium",
+            f"{label} não está incluído no plano Grátis.\n\nDeseja conhecer os planos Essencial e Pro?",
+        ):
+            webbrowser.open(SITE_URL + "#planos")
+        return False
 
     def _navigate_compact(self, view_name: str) -> None:
         handler = next((action for label, action in self._navigation if label == view_name), None)
@@ -463,6 +493,8 @@ class ContentPlannerApp(ctk.CTk):
         self.show_planning()
 
     def show_video_studio(self) -> None:
+        if not self._require_feature("video", "Estúdio de Vídeo"):
+            return
         handlers = {
             "Importar": self.show_youtube_downloader,
             "Legendas": self.show_video_subtitles,
@@ -588,6 +620,8 @@ class ContentPlannerApp(ctk.CTk):
                 self._refresh_video_table()
 
     def show_offer_flyer(self) -> None:
+        if not self._require_feature("offer_flyer", "Encarte de Ofertas"):
+            return
         frame = self._set_active_view("Encarte de Ofertas", "Encarte de Ofertas", "Preencha modelos PSD com produtos, preços e fotos. Requer Adobe Photoshop instalado.")
         self.encarte_psd = ctk.StringVar(); self.encarte_sheet = ctk.StringVar(); self.encarte_photos = ctk.StringVar(); self.encarte_output = ctk.StringVar(value=str(ROOT_DIR / "exports" / "encartes")); self.encarte_period = ctk.StringVar()
         fields = (("Modelo PSD", self.encarte_psd, self._pick_encarte_psd), ("Planilha de produtos", self.encarte_sheet, self._pick_encarte_sheet), ("Pasta de fotos", self.encarte_photos, self._pick_encarte_photos), ("Pasta de saída", self.encarte_output, self._pick_encarte_output))
@@ -1057,6 +1091,8 @@ class ContentPlannerApp(ctk.CTk):
         threading.Thread(target=task, daemon=True).start()
 
     def _connect_trello(self) -> None:
+        if not self._require_feature("trello", "Integração com Trello"):
+            return
         self.trello_connect_button.configure(state="disabled", text="AGUARDANDO LOGIN...")
         self.trello_connection_status.configure(text="Conclua a autorização na janela do navegador.")
         def task() -> None:
@@ -1149,6 +1185,9 @@ class ContentPlannerApp(ctk.CTk):
             return None
 
     def _open_client_modal(self, client: Client | None = None) -> None:
+        if client is None and self.plan.max_clients is not None and len(self.db.search_clients()) >= self.plan.max_clients:
+            self._show_warning("Limite do plano", f"O plano {self.plan.name} permite até {self.plan.max_clients} cliente. Faça upgrade para cadastrar mais.")
+            return
         modal = FormModal(self, "Cliente", width=620, height=640)
         fields = {
             "name": modal.entry("Nome", client.name if client else ""),
@@ -1230,6 +1269,11 @@ class ContentPlannerApp(ctk.CTk):
         ctk.CTkButton(modal.body, text="Fechar", fg_color=UI["secondary"], hover_color=UI["secondary_hover"], text_color=UI["text"], command=modal.destroy).pack(fill="x")
 
     def _open_post_modal(self, post_date: str, post: Post | None, parent_modal: ctk.CTkToplevel | None = None) -> None:
+        if post is None and self.plan.max_monthly_posts is not None:
+            year, month = (int(value) for value in post_date.split("-")[:2])
+            if self.db.count_posts_month(year, month) >= self.plan.max_monthly_posts:
+                self._show_warning("Limite do plano", f"O plano {self.plan.name} permite até {self.plan.max_monthly_posts} conteúdos por mês. Seus conteúdos existentes continuam disponíveis.")
+                return
         modal = FormModal(self, "Conteúdo", width=720, height=760)
         title = modal.entry("Título", post.title if post else "")
         content_type = modal.option("Tipo", CONTENT_TYPES, post.content_type if post else CONTENT_TYPES[0])
@@ -1311,11 +1355,18 @@ class ContentPlannerApp(ctk.CTk):
     def _export_pdf(self, client: Client, year: int, month: int) -> None:
         if client.id is None:
             return
+        usage_period = date.today().strftime("%Y-%m")
+        usage_key = f"PLAN_PDF_EXPORTS_{usage_period}"
+        if self.plan.max_monthly_pdfs is not None and int(self.db.get_setting(usage_key, "0")) >= self.plan.max_monthly_pdfs:
+            self._show_warning("Limite do plano", f"O plano {self.plan.name} permite {self.plan.max_monthly_pdfs} PDF por mês. Faça upgrade para exportações ilimitadas.")
+            return
         try:
             path = self.pdf.export_month(client, self.db.get_posts_for_client_month(client.id, year, month), year, month)
         except Exception as exc:
             self._show_error("Erro ao exportar PDF", str(exc))
             return
+        if self.plan.max_monthly_pdfs is not None:
+            self.db.set_setting(usage_key, str(int(self.db.get_setting(usage_key, "0")) + 1))
         self._open_pdf_preview(path)
         self._show_info("PDF exportado", f"Arquivo salvo e aberto para visualização:\n{path}")
 
@@ -1328,6 +1379,8 @@ class ContentPlannerApp(ctk.CTk):
             self._show_warning("Visualização do PDF", f"O PDF foi salvo, mas não foi possível abrir automaticamente:\n{exc}")
 
     def _send_to_trello(self, client: Client, year: int, month: int) -> None:
+        if not self._require_feature("trello", "Integração com Trello"):
+            return
         if client.id is None:
             return
         posts = self.db.get_posts_for_client_month(client.id, year, month)
