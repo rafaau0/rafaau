@@ -55,8 +55,8 @@ class LoginWindow(ctk.CTk):
         self.protocol("WM_DELETE_WINDOW", self._cancel)
         ctk.set_appearance_mode("light")
 
-        self.card = ctk.CTkFrame(self, fg_color=UI["surface"], corner_radius=RADIUS["lg"], border_width=1, border_color=UI["border"])
-        self.card.place(relx=.5, rely=.5, anchor="center", width=520, relheight=.88)
+        self.card = ctk.CTkFrame(self, width=520, fg_color=UI["surface"], corner_radius=RADIUS["lg"], border_width=1, border_color=UI["border"])
+        self.card.place(relx=.5, rely=.5, anchor="center", relheight=.88)
         self.card.bind("<Configure>", lambda _event: self._resize_panels())
         self._build_forms()
         self._resize_panels()
