@@ -106,7 +106,7 @@ const faqs = [
 ];
 
 const DOWNLOAD_URL =
-  'https://github.com/rafaau0/rafaau/releases/download/v1.0.0/rafaau_v1.exe';
+  'https://github.com/rafaau0/rafaau/releases/latest/download/rafaau_v1.exe';
 
 function Logo({ compact = false }: { compact?: boolean }) {
   return (
