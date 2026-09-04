@@ -189,12 +189,9 @@ class LoginWindow(ctk.CTk):
         self.login_error.configure(text=message)
 
     def _submit_login(self) -> None:
-        email, password = self.login_email.get().strip().lower(), self.login_password.get()
-        if not self._valid_email(email): self._show_login_error("Informe um e-mail válido."); return
-        if not password: self._show_login_error("Informe sua senha."); return
-        self.login_error.configure(text="Conectando...")
-        self.login_button.configure(state="disabled", text="ENTRANDO...")
-        threading.Thread(target=self._login_request, args=(email, password), daemon=True).start()
+        """Acesso liberado temporariamente: o botão abre o Planner sem credenciais."""
+        self.authenticated = True
+        self.destroy()
 
     def _login_request(self, email: str, password: str) -> None:
         try:
