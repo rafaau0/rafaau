@@ -20,5 +20,22 @@ jobs:
         run: python -m pip_audit -r requirements.txt; python -m pip_audit -r ai_service/requirements.txt
       - name: Tests
         run: python -m unittest discover -s tests -v
+      - name: Prepare bundled FFmpeg
+        run: powershell -ExecutionPolicy Bypass -File scripts/prepare_ffmpeg.ps1
       - name: Build executable
         run: python -m PyInstaller --noconfirm --clean NeivaPlanner.spec
+      - name: Verify bundled FFmpeg
+        run: |
+          $contents = python -m PyInstaller.utils.cliutils.archive_viewer -l dist/NeivaPlanner_v1.exe
+          $hasFfmpeg = $contents | Select-String -SimpleMatch 'assets\\ffmpeg\\ffmpeg.exe'
+          $hasFfprobe = $contents | Select-String -SimpleMatch 'assets\\ffmpeg\\ffprobe.exe'
+          if (-not $hasFfmpeg -or -not $hasFfprobe) {
+            throw 'FFmpeg ou FFprobe não foi incorporado ao executável.'
+          }
+      - name: Upload Windows executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: NeivaPlanner-Windows-${{ github.sha }}
+          path: dist/NeivaPlanner_v1.exe
+          if-no-files-found: error
+          retention-days: 14

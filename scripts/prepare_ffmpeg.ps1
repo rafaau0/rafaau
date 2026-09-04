@@ -1,23 +1,22 @@
 $ErrorActionPreference = 'Stop'
 
-$archiveUrl = 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip'
-$checksumUrl = 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip.sha256'
+$archiveUrl = 'https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-9.0.1-essentials_build.zip'
 $expectedVersion = 'ffmpeg-9.0.1-essentials_build'
 $expectedChecksum = 'fec81ae03971d9dd4be3ebe02e263bd2ec1d789483f931bdba5f5715e65da2e9'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $destination = Join-Path $projectRoot 'assets\ffmpeg'
 $temporaryRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('neiva-ffmpeg-' + [guid]::NewGuid().ToString('N'))
 $archive = Join-Path $temporaryRoot 'ffmpeg.zip'
-$checksumFile = Join-Path $temporaryRoot 'ffmpeg.zip.sha256'
 
 try {
     New-Item -ItemType Directory -Path $temporaryRoot | Out-Null
-    Invoke-WebRequest -Uri $archiveUrl -OutFile $archive
-    Invoke-WebRequest -Uri $checksumUrl -OutFile $checksumFile
+    & curl.exe --fail --location --retry 3 --retry-delay 5 --connect-timeout 30 --max-time 600 --silent --show-error --output $archive $archiveUrl
+    if ($LASTEXITCODE -ne 0) {
+        throw "Não foi possível baixar o FFmpeg (curl: $LASTEXITCODE)."
+    }
 
-    $publishedChecksum = (Get-Content -LiteralPath $checksumFile -Raw).Trim().Split()[0].ToLowerInvariant()
     $actualChecksum = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
-    if ($publishedChecksum -ne $expectedChecksum -or $actualChecksum -ne $expectedChecksum) {
+    if ($actualChecksum -ne $expectedChecksum) {
         throw "O SHA-256 do FFmpeg não corresponde à versão aprovada: $actualChecksum"
     }
 
