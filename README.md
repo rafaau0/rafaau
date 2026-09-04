@@ -44,7 +44,7 @@ python -m content_planner
 
 - Para **Estúdio de Vídeo > Cortes** com IA, configure em **Configurações > IA NEIVA** a URL da API Neiva e a chave de acesso fornecida ao cliente. A chave OpenAI da empresa fica exclusivamente no servidor e nunca é distribuída no aplicativo.
 - A transcrição é local. Quando a opção **Usar IA OpenAI** estiver ativa, somente a transcrição com timestamps é enviada à API para selecionar os cortes; esse uso pode gerar custo.
-- Instale o [FFmpeg](https://ffmpeg.org/) e deixe `ffmpeg` e `ffprobe` disponíveis no `PATH` para download/transcrição de vídeo.
+- O executável de produção inclui FFmpeg e FFprobe. Em desenvolvimento, execute `powershell -ExecutionPolicy Bypass -File scripts\prepare_ffmpeg.ps1` ou disponibilize ambos no `PATH`.
 - Para o módulo de encartes, instale o Adobe Photoshop. O projeto já contém toda a automação de PSD necessária.
 
 Os vídeos baixados ficam em `exports/downloads` e os resultados das análises em `exports/analises_de_cortes` (JSON).
@@ -67,21 +67,22 @@ Antes de distribuir uma versão, execute os testes, gere o executável em uma pa
 
 Para distribuir os recursos de vídeo sem exigir configuração manual, coloque `ffmpeg.exe` e `ffprobe.exe` em `assets\ffmpeg` antes de gerar o executável. Se esses arquivos não estiverem presentes, o aplicativo procurará o FFmpeg no `PATH` do Windows.
 
+O script `scripts\prepare_ffmpeg.ps1` baixa a versão fixada do build Windows, confere seu SHA-256 e prepara os binários e documentos de licença. O build utilizado é distribuído sob GPLv3; a licença, a configuração do build e o link do código-fonte correspondente são incorporados ao aplicativo em `assets\ffmpeg`.
+
 ## Trello
 
-Em **Configurações**, o usuário clica em **Conectar ao Trello**, autoriza o Neiva Planner no navegador e escolhe o quadro pelo nome. O token e o ID do quadro são salvos no cofre do Windows, separados do banco local; o programa nunca recebe a senha do usuário.
+Em **Configurações**, o usuário clica em **Conectar ao Trello**, autoriza o Neiva Planner no navegador e escolhe o quadro pelo nome. O OAuth Secret permanece somente na API rafaau. O token individual e o ID do quadro são entregues uma única vez ao aplicativo autenticado e salvos no cofre do Windows; o programa nunca recebe a senha do usuário.
 
 ### Preparar o login do Trello para distribuição
 
 Esta configuração é feita uma única vez pelo responsável pelo Neiva Planner, não pelo cliente:
 
-1. Crie ou abra o Power-Up do Neiva Planner em `https://trello.com/apps/admin` e gere a API Key.
-2. Nas origens permitidas da chave, adicione `http://localhost:8765`.
-3. Copie `assets\trello_app.example.json` para `assets\trello_app.json`.
-4. Substitua o valor de `api_key` pela chave pública do Power-Up.
-5. Gere novamente o executável. O arquivo real é ignorado pelo Git e incorporado somente ao build.
+1. Crie ou abra o Power-Up do Neiva Planner em `https://trello.com/apps/admin` e gere a API Key e o OAuth Secret.
+2. Nas origens permitidas, adicione `https://neiva-ai-api.onrender.com`.
+3. No serviço da API no Render, configure `TRELLO_API_KEY` e `TRELLO_API_SECRET` como variáveis secretas.
+4. Se a API usar outro domínio, configure também `PUBLIC_API_URL`; o callback será `<PUBLIC_API_URL>/v1/integrations/trello/callback`.
 
-Também é possível definir `TRELLO_APP_KEY` no ambiente de build. A chave do aplicativo é pública; o token individual de cada usuário permanece secreto no cofre do Windows.
+O OAuth Secret nunca deve ser incluído no Git ou no executável. A API usa o segredo apenas para assinar o OAuth 1.0 e criptografa as credenciais temporárias enquanto o navegador conclui o fluxo.
 
 O sistema só envia ao Trello conteúdos que ainda não possuem um card vinculado. Assim, repetir o envio não cria cards duplicados.
 

@@ -1044,11 +1044,7 @@ class ContentPlannerApp(ctk.CTk):
 
     def _load_trello_connection(self) -> None:
         app_key, token = get_trello_app_key(), get_secret("TRELLO_TOKEN", self.db.get_setting("TRELLO_TOKEN"))
-        if not app_key:
-            self.trello_connection_status.configure(text="Conexão indisponível: a versão não possui uma chave de aplicativo Trello.", text_color=UI["error"])
-            self.trello_connect_button.configure(state="disabled")
-            return
-        if not token:
+        if not app_key or not token:
             self.trello_connection_status.configure(text="Nenhuma conta conectada.")
             return
         self.trello_connect_button.configure(state="disabled", text="VERIFICANDO...")
@@ -1061,16 +1057,14 @@ class ContentPlannerApp(ctk.CTk):
         threading.Thread(target=task, daemon=True).start()
 
     def _connect_trello(self) -> None:
-        app_key = get_trello_app_key()
-        if not app_key:
-            self._show_error("Trello", "A chave pública do aplicativo Trello não foi configurada nesta versão.")
-            return
         self.trello_connect_button.configure(state="disabled", text="AGUARDANDO LOGIN...")
         self.trello_connection_status.configure(text="Conclua a autorização na janela do navegador.")
         def task() -> None:
             try:
-                token = authorize_trello(app_key); identity = get_trello_identity(app_key, token); boards = list_trello_boards(app_key, token)
-                set_secret("TRELLO_TOKEN", token); self.db.delete_setting("TRELLO_TOKEN"); os.environ["TRELLO_TOKEN"] = token
+                app_key, token = authorize_trello(); identity = get_trello_identity(app_key, token); boards = list_trello_boards(app_key, token)
+                set_secret("TRELLO_API_KEY", app_key); set_secret("TRELLO_TOKEN", token)
+                self.db.delete_setting("TRELLO_API_KEY"); self.db.delete_setting("TRELLO_TOKEN")
+                os.environ["TRELLO_API_KEY"] = app_key; os.environ["TRELLO_TOKEN"] = token
                 self.after(0, lambda: self._display_trello_connection(identity.full_name or identity.username, boards))
             except Exception as exc:
                 self.after(0, lambda message=str(exc): self._trello_connection_failed(message, True))
@@ -1106,7 +1100,7 @@ class ContentPlannerApp(ctk.CTk):
 
     def _disconnect_trello(self) -> None:
         try:
-            for key in ("TRELLO_TOKEN", "TRELLO_BOARD_ID"):
+            for key in ("TRELLO_API_KEY", "TRELLO_TOKEN", "TRELLO_BOARD_ID"):
                 set_secret(key, ""); self.db.delete_setting(key); os.environ.pop(key, None)
         except Exception as exc:
             self._show_error("Trello", str(exc)); return

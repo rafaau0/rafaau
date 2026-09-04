@@ -14,7 +14,10 @@ exports/
 .cache/
 *.exe
 python-*.exe
-assets/trello_app.json
+assets/ffmpeg/*.exe
+ffmpeg-release-essentials.zip
+ffmpeg-release-essentials.zip.sha256
+ffmpeg_extract/
 .env
 .env.*
 !*.example

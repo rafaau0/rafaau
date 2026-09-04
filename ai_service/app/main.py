@@ -12,11 +12,13 @@ from base64 import urlsafe_b64decode, urlsafe_b64encode
 from datetime import datetime, timedelta, timezone
 
 import requests
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from fastapi import Depends, FastAPI, Header, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field, field_validator
+from requests_oauthlib import OAuth1Session
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint, create_engine, inspect, select, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
@@ -137,6 +139,21 @@ class CheckoutOrder(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
+class TrelloOAuthRequest(Base):
+    """Autorização curta, vinculada à licença que iniciou a conexão."""
+    __tablename__ = "trello_oauth_requests"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    public_id: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), index=True)
+    request_token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    request_secret_encrypted: Mapped[str] = mapped_column(String(1000))
+    access_token_encrypted: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    status: Mapped[str] = mapped_column(String(30), default="pending")
+    error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
 class SubtitleInput(BaseModel):
     start: float = Field(ge=0)
     end: float = Field(gt=0)
@@ -222,6 +239,25 @@ def normalize_email(value: str) -> str:
 
 def token_hash(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def integration_encrypt(value: str) -> str:
+    secret = os.getenv("TRELLO_API_SECRET", "")
+    if not secret:
+        raise RuntimeError("Integração Trello não configurada.")
+    key = hashlib.sha256(("neiva-trello:" + secret).encode("utf-8")).digest()
+    nonce = secrets.token_bytes(12)
+    encrypted = AESGCM(key).encrypt(nonce, value.encode("utf-8"), b"trello-oauth-v1")
+    return urlsafe_b64encode(nonce + encrypted).decode("ascii")
+
+
+def integration_decrypt(value: str) -> str:
+    secret = os.getenv("TRELLO_API_SECRET", "")
+    if not secret:
+        raise RuntimeError("Integração Trello não configurada.")
+    raw = urlsafe_b64decode(value.encode("ascii"))
+    key = hashlib.sha256(("neiva-trello:" + secret).encode("utf-8")).digest()
+    return AESGCM(key).decrypt(raw[:12], raw[12:], b"trello-oauth-v1").decode("utf-8")
 
 
 def password_hash(password: str) -> str:
@@ -493,6 +529,142 @@ def app_session(client: Client = Depends(current_client), session: Session = Dep
     if account is None:
         return {"license_active": True, "legacy_license": True}
     return {"account": account_response(account, client), "license_active": True, "legacy_license": False}
+
+
+TRELLO_REQUEST_TOKEN_URL = "https://trello.com/1/OAuthGetRequestToken"
+TRELLO_AUTHORIZE_URL = "https://trello.com/1/OAuthAuthorizeToken"
+TRELLO_ACCESS_TOKEN_URL = "https://trello.com/1/OAuthGetAccessToken"
+
+
+def trello_credentials() -> tuple[str, str]:
+    api_key = os.getenv("TRELLO_API_KEY", "").strip()
+    api_secret = os.getenv("TRELLO_API_SECRET", "").strip()
+    if not api_key or not api_secret:
+        raise HTTPException(status_code=503, detail="Integração Trello ainda não configurada.")
+    return api_key, api_secret
+
+
+def _oauth_expired(value: datetime) -> bool:
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value < datetime.now(timezone.utc)
+
+
+@app.post("/v1/integrations/trello/start")
+def start_trello_oauth(client: Client = Depends(current_client), session: Session = Depends(db_session)) -> dict[str, str]:
+    """Inicia OAuth 1.0; o segredo do aplicativo nunca é enviado ao desktop."""
+    api_key, api_secret = trello_credentials()
+    public_id = secrets.token_urlsafe(24)
+    public_api_url = os.getenv("PUBLIC_API_URL", "https://neiva-ai-api.onrender.com").rstrip("/")
+    callback_url = f"{public_api_url}/v1/integrations/trello/callback"
+    oauth = OAuth1Session(api_key, client_secret=api_secret, callback_uri=callback_url)
+    try:
+        request_token = oauth.fetch_request_token(TRELLO_REQUEST_TOKEN_URL)
+        oauth_token = request_token["oauth_token"]
+        oauth_secret = request_token["oauth_token_secret"]
+    except (requests.RequestException, KeyError, ValueError) as exc:
+        logger.warning("Falha ao iniciar OAuth Trello: %s", type(exc).__name__)
+        raise HTTPException(status_code=502, detail="O Trello não iniciou a autorização.") from exc
+    session.add(TrelloOAuthRequest(
+        public_id=public_id,
+        client_id=client.id,
+        request_token_hash=token_hash(oauth_token),
+        request_secret_encrypted=integration_encrypt(oauth_secret),
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=5),
+    ))
+    session.commit()
+    authorize_url = oauth.authorization_url(
+        TRELLO_AUTHORIZE_URL,
+        name="Neiva Planner",
+        scope="read,write",
+        expiration="never",
+    )
+    return {"connection_id": public_id, "authorize_url": authorize_url}
+
+
+@app.get("/v1/integrations/trello/callback", response_class=HTMLResponse, include_in_schema=False)
+def trello_oauth_callback(
+    oauth_token: str = "",
+    oauth_verifier: str = "",
+    session: Session = Depends(db_session),
+) -> HTMLResponse:
+    pending = session.scalar(
+        select(TrelloOAuthRequest).where(TrelloOAuthRequest.request_token_hash == token_hash(oauth_token))
+    ) if oauth_token else None
+    if not pending or pending.status != "pending" or _oauth_expired(pending.expires_at):
+        return HTMLResponse(
+            "<main><h1>Neiva Planner</h1><p>Esta autorização expirou. Volte ao aplicativo e tente novamente.</p></main>",
+            status_code=400,
+            headers={"Referrer-Policy": "no-referrer", "Cache-Control": "no-store"},
+        )
+    if not oauth_verifier:
+        pending.status = "failed"
+        pending.error = "Autorização cancelada no Trello."
+        session.commit()
+        return HTMLResponse(
+            "<main><h1>Neiva Planner</h1><p>Autorização cancelada. Você pode fechar esta janela.</p></main>",
+            status_code=400,
+            headers={"Referrer-Policy": "no-referrer", "Cache-Control": "no-store"},
+        )
+    api_key, api_secret = trello_credentials()
+    oauth = OAuth1Session(
+        api_key,
+        client_secret=api_secret,
+        resource_owner_key=oauth_token,
+        resource_owner_secret=integration_decrypt(pending.request_secret_encrypted),
+        verifier=oauth_verifier,
+    )
+    try:
+        access = oauth.fetch_access_token(TRELLO_ACCESS_TOKEN_URL)
+        access_token = access["oauth_token"]
+    except (requests.RequestException, KeyError, ValueError) as exc:
+        pending.status = "failed"
+        pending.error = "O Trello não concluiu a autorização."
+        session.commit()
+        logger.warning("Falha ao concluir OAuth Trello: %s", type(exc).__name__)
+        return HTMLResponse(
+            "<main><h1>Neiva Planner</h1><p>Não foi possível concluir. Volte ao aplicativo e tente novamente.</p></main>",
+            status_code=502,
+            headers={"Referrer-Policy": "no-referrer", "Cache-Control": "no-store"},
+        )
+    pending.access_token_encrypted = integration_encrypt(access_token)
+    pending.request_secret_encrypted = "consumido"
+    pending.status = "complete"
+    session.commit()
+    return HTMLResponse(
+        "<main><h1>Neiva Planner</h1><p>Trello conectado com sucesso. Você pode fechar esta janela.</p></main>",
+        headers={"Referrer-Policy": "no-referrer", "Cache-Control": "no-store"},
+    )
+
+
+@app.get("/v1/integrations/trello/status/{connection_id}")
+def trello_oauth_status(
+    connection_id: str,
+    client: Client = Depends(current_client),
+    session: Session = Depends(db_session),
+) -> dict:
+    pending = session.scalar(select(TrelloOAuthRequest).where(
+        TrelloOAuthRequest.public_id == connection_id,
+        TrelloOAuthRequest.client_id == client.id,
+    ))
+    if not pending:
+        raise HTTPException(status_code=404, detail="Autorização não encontrada.")
+    if _oauth_expired(pending.expires_at):
+        session.delete(pending)
+        session.commit()
+        return {"status": "expired"}
+    if pending.status == "failed":
+        message = pending.error or "Autorização não concluída."
+        session.delete(pending)
+        session.commit()
+        return {"status": "failed", "message": message}
+    if pending.status != "complete" or not pending.access_token_encrypted:
+        return {"status": "pending"}
+    api_key, _api_secret = trello_credentials()
+    access_token = integration_decrypt(pending.access_token_encrypted)
+    session.delete(pending)
+    session.commit()
+    return {"status": "complete", "api_key": api_key, "token": access_token}
 
 
 @app.get("/v1/billing/return", response_class=HTMLResponse, include_in_schema=False)

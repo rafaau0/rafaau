@@ -12,15 +12,19 @@ OPTIONAL_FFMPEG = [
     for name in ('ffmpeg.exe', 'ffprobe.exe')
     if (FFMPEG_DIR / name).is_file()
 ]
+OPTIONAL_FFMPEG_DATA = [
+    (str(FFMPEG_DIR / name), 'assets/ffmpeg')
+    for name in ('LICENSE.GPLv3.txt', 'BUILD_INFO.txt')
+    if (FFMPEG_DIR / name).is_file()
+]
 FASTER_WHISPER_DATA = collect_data_files('faster_whisper')
-TRELLO_APP_CONFIG = [('assets/trello_app.json', 'assets')] if Path('assets/trello_app.json').is_file() else []
 
 
 a = Analysis(
     ['content_planner/main.py'],
     pathex=[],
     binaries=[(str(TK_DLLS / '_tkinter.pyd'), '.'), (str(TK_DLLS / 'tcl86t.dll'), '.'), (str(TK_DLLS / 'tk86t.dll'), '.'), *OPTIONAL_FFMPEG],
-    datas=[('assets/neiva_logo.png', 'assets'), ('assets/neiva_logo.ico', 'assets'), ('assets/neiva_light.json', 'assets'), (str(TK_DATA / 'tcl8.6'), '_tcl_data'), (str(TK_DATA / 'tk8.6'), '_tk_data'), *FASTER_WHISPER_DATA, *TRELLO_APP_CONFIG],
+    datas=[('assets/neiva_logo.png', 'assets'), ('assets/neiva_logo.ico', 'assets'), ('assets/neiva_light.json', 'assets'), (str(TK_DATA / 'tcl8.6'), '_tcl_data'), (str(TK_DATA / 'tk8.6'), '_tk_data'), *FASTER_WHISPER_DATA, *OPTIONAL_FFMPEG_DATA],
     hiddenimports=['tkinter', 'tkinter.messagebox'],
     hookspath=['hooks'],
     hooksconfig={},
