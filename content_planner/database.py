@@ -57,6 +57,7 @@ class Post:
     cta: str
     status: str
     operation_id: str | None = None
+    trello_board_id: str | None = None
 
 
 class Database:
@@ -138,6 +139,8 @@ class Database:
             post_columns = {row[1] for row in conn.execute("PRAGMA table_info(posts)")}
             if "operation_id" not in post_columns:
                 conn.execute("ALTER TABLE posts ADD COLUMN operation_id TEXT DEFAULT NULL")
+            if "trello_board_id" not in post_columns:
+                conn.execute("ALTER TABLE posts ADD COLUMN trello_board_id TEXT DEFAULT NULL")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_posts_client_date ON posts(client_id, post_date)")
             conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_clientes_operation_id ON clientes(operation_id) WHERE operation_id IS NOT NULL")
             conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_posts_operation_id ON posts(operation_id) WHERE operation_id IS NOT NULL")
@@ -270,9 +273,9 @@ class Database:
                 ),
             )
 
-    def update_post_trello_card(self, post_id: int, card_id: str) -> None:
+    def update_post_trello_card(self, post_id: int, card_id: str, board_id: str | None = None) -> None:
         with self.connect() as conn:
-            conn.execute("UPDATE posts SET trello_card_id=? WHERE id=?", (card_id, post_id))
+            conn.execute("UPDATE posts SET trello_card_id=?, trello_board_id=? WHERE id=?", (card_id, board_id, post_id))
 
     def delete_post(self, post_id: int) -> None:
         with self.connect() as conn:
@@ -313,17 +316,28 @@ class Database:
             ).fetchall()
         return [self._row_to_post(row) for row in rows]
 
-    def get_posts_pending_trello(self, client_id: int, year: int, month: int) -> list[Post]:
+    def get_posts_pending_trello(self, client_id: int, year: int, month: int, board_id: str | None = None) -> list[Post]:
         prefix = f"{year:04d}-{month:02d}"
         with self.connect() as conn:
-            rows = conn.execute(
-                """
-                SELECT * FROM posts
-                WHERE client_id=? AND post_date LIKE ? AND (trello_card_id IS NULL OR trello_card_id='')
-                ORDER BY post_date, id
-                """,
-                (client_id, f"{prefix}-%"),
-            ).fetchall()
+            if board_id:
+                rows = conn.execute(
+                    """
+                    SELECT * FROM posts
+                    WHERE client_id=? AND post_date LIKE ?
+                      AND (trello_card_id IS NULL OR trello_card_id='' OR trello_board_id IS NULL OR trello_board_id<>?)
+                    ORDER BY post_date, id
+                    """,
+                    (client_id, f"{prefix}-%", board_id),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT * FROM posts
+                    WHERE client_id=? AND post_date LIKE ? AND (trello_card_id IS NULL OR trello_card_id='')
+                    ORDER BY post_date, id
+                    """,
+                    (client_id, f"{prefix}-%"),
+                ).fetchall()
         return [self._row_to_post(row) for row in rows]
 
     def get_setting(self, key: str, default: str = "") -> str:
@@ -400,4 +414,5 @@ class Database:
             cta=row["cta"],
             status=row["status"],
             operation_id=row["operation_id"] if "operation_id" in row.keys() else None,
+            trello_board_id=row["trello_board_id"] if "trello_board_id" in row.keys() else None,
         )

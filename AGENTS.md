@@ -316,7 +316,7 @@ npm run build
 npm run start
 ```
 
-O workflow `.github/workflows/quality.yml` instala dependências, executa `pip check`, `pip-audit`, testes Python, lint/build do site, baixa/verifica FFmpeg e gera o EXE. Tags `v*` exigem certificado configurado, assinam e validam o executável antes da release.
+O workflow `.github/workflows/quality.yml` instala dependências, executa `pip check`, `pip-audit`, testes Python, lint/build do site, baixa/verifica FFmpeg e gera o EXE. Tags estáveis exatas (`vX.Y.Z`) exigem certificado configurado, assinam e validam o executável antes da release oficial. Tags SemVer com sufixo (`vX.Y.Z-sufixo`, como `-test.1`, `-beta.1` ou `-rc.1`) podem publicar uma prerelease não assinada. Tags `v*` fora desses formatos falham. O site usa a release estável mais recente; o desktop não possui atualizador automático.
 
 Estado verificado diretamente em 2026-09-05 após a correção do baseline: 38 testes Python passam; `npm run lint` e `npm run build` passam para o código publicado do site. Os componentes UI de scaffold não utilizados ficam fora do escopo do lint da aplicação. O build PyInstaller foi repetido com sucesso e incluiu FFmpeg, FFprobe e `content_planner.paths`; o artefato local permanece sem assinatura por não haver certificado no workspace.
 
@@ -334,6 +334,7 @@ Estado verificado diretamente em 2026-09-05 após a correção do baseline: 38 t
 10. Não assumir que texto do site corresponde ao produto: comparar qualquer promessa comercial com desktop/API.
 11. Não remover `encarte_legacy.py` pelo nome: apesar de “legacy”, ele é chamado pelo serviço atual.
 12. Não atualizar FFmpeg sem atualizar URL, versão, SHA-256, licença e `BUILD_INFO.txt` de forma coerente.
+13. Não enfraquecer a separação de releases: stable `vX.Y.Z` deve continuar exigindo assinatura válida; somente tags com sufixo podem ser publicadas como prerelease sem assinatura.
 
 ## 14. Partes sensíveis
 
@@ -504,7 +505,7 @@ O código foi alterado para tratar os 51 achados do relatório. O histórico da 
 - Isolamento/dados (`QA-015` a `QA-018`): segredos Trello por conta, banco legado não é entregue automaticamente a conta moderna, seletores usam ID mesmo com homônimos, validação no repositório e `operation_id` único para reenvio idempotente de criação.
 - PDF (`QA-019` a `QA-021`): detalhes completos, células com `Paragraph` para wrap/entidades e nomes de saída com cliente/timestamp; escrita usa arquivo temporário e substituição final.
 - Encartes (`QA-022` a `QA-027`): assinatura da origem validada antes de gerar, limite acima de 24 rejeitado, parser monetário, duplicatas avisadas, foto ausente bloqueada, fuzzy ambíguo exige confirmação e falha Photoshop remove saída parcial. O ExtendScript agora insere a foto no grupo esperado.
-- Trello (`QA-028` a `QA-030`): marcador inclui origem conta/banco, cache inclui quadro e criação de card possui trava compartilhada dentro do processo. A garantia absoluta entre dois processos ainda depende de validação/estratégia no provedor.
+- Trello (`QA-028` a `QA-030`): marcador inclui origem conta/banco, cache e vínculo do card incluem o quadro, registros antigos são reconciliados pelo marcador e criação de card possui trava compartilhada dentro do processo. A garantia absoluta entre dois processos ainda depende de validação/estratégia no provedor.
 - Vídeo (`QA-031` a `QA-043`): edição invalida palavras antigas, segmentação usa timestamps reais, jobs são vinculados ao projeto/origem, análise de silêncio é consumida e restaurada só ao falhar, writer único, destinos únicos, exportação sem legenda, flag mestre de efeitos, timeouts/limpeza, preservação de palavras/configurações, validação de margens, filter script para comandos grandes e temporário ASS opaco para caminhos com apóstrofo.
 - Distribuição/site (`QA-044` a `QA-051`): release com tag falha sem certificado e valida Authenticode; mensagens de API são normalizadas; fetch/polling possuem timeout/status; a oferta agora é somente mensal sem trial; foram removidos depoimentos/métrica/placeholders e ações sociais/recuperação falsas; lint/build do site entraram no CI.
 - O executável passou a gravar exportações em `%LOCALAPPDATA%\NeivaPlanner\exports`, evitando tentativa de escrita em `Program Files`.

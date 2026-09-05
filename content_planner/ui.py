@@ -1526,7 +1526,11 @@ class ContentPlannerApp(ctk.CTk):
         if not posts:
             self._show_warning("Trello", "Não há posts neste mês.")
             return
-        pending_posts = self.db.get_posts_pending_trello(client.id, year, month)
+        selected_board_id = get_secret(self._trello_secret("TRELLO_BOARD_ID"), self.db.get_setting("TRELLO_BOARD_ID"))
+        if not selected_board_id:
+            self._show_warning("Trello", "Conecte sua conta e selecione um quadro em Configurações antes de enviar.")
+            return
+        pending_posts = self.db.get_posts_pending_trello(client.id, year, month, selected_board_id)
         if not pending_posts:
             self._show_info("Trello", "Todos os posts deste mês já foram enviados ao Trello.")
             return
@@ -1552,7 +1556,7 @@ class ContentPlannerApp(ctk.CTk):
                 settings = {
                     "TRELLO_API_KEY": get_trello_app_key(),
                     "TRELLO_TOKEN": get_secret(self._trello_secret("TRELLO_TOKEN"), self.db.get_setting("TRELLO_TOKEN")),
-                    "TRELLO_BOARD_ID": get_secret(self._trello_secret("TRELLO_BOARD_ID"), self.db.get_setting("TRELLO_BOARD_ID")),
+                    "TRELLO_BOARD_ID": selected_board_id,
                 }
                 account = current_account()
                 settings["TRELLO_SOURCE_ID"] = account.account_id if account else hashlib.sha256(str(self.db.db_path.resolve()).encode("utf-8")).hexdigest()[:16]
@@ -1565,7 +1569,7 @@ class ContentPlannerApp(ctk.CTk):
                 for post in pending_posts:
                     if post.id is not None:
                         card_id = api.get_or_create_card(list_id, post)
-                        self.db.update_post_trello_card(post.id, card_id)
+                        self.db.update_post_trello_card(post.id, card_id, selected_board_id)
                         created[post.id] = card_id
             except Exception as exc:
                 detail = f"{exc} ({len(created)} card(s) enviado(s) antes da falha.)" if created else str(exc)

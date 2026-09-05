@@ -32,6 +32,9 @@ class DatabaseTests(unittest.TestCase):
 
         self.database.update_post_trello_card(post_id, "card-123")
         self.assertEqual(self.database.get_posts_pending_trello(self.client_id, 2026, 8), [])
+        self.assertEqual([post.id for post in self.database.get_posts_pending_trello(self.client_id, 2026, 8, "other-board")], [post_id])
+        self.database.update_post_trello_card(post_id, "card-123", "other-board")
+        self.assertEqual(self.database.get_posts_pending_trello(self.client_id, 2026, 8, "other-board"), [])
 
     def test_settings_are_persisted(self) -> None:
         self.database.set_setting("TRELLO_BOARD_ID", "board-123")

@@ -63,7 +63,9 @@ Os vídeos baixados ficam em `exports/downloads` e os resultados das análises e
 
 O arquivo final será `dist\NeivaPlanner_v1.exe`. No executável, bancos ficam em `%LOCALAPPDATA%\NeivaPlanner\database` e exportações em `%LOCALAPPDATA%\NeivaPlanner\exports`. Dados legados não são associados automaticamente a uma conta moderna; qualquer migração precisa confirmar o titular.
 
-Antes de distribuir uma versão, execute os testes, gere o executável em uma pasta nova e valide manualmente: abertura do aplicativo, criação de cliente/post, exportação de PDF, conexão Trello e um vídeo curto. Assine o executável antes de distribuição pública.
+Antes de distribuir uma versão, execute os testes, gere o executável em uma pasta nova e valide manualmente: abertura do aplicativo, criação de cliente/post, exportação de PDF, conexão Trello e um vídeo curto.
+
+O workflow diferencia o canal pelo formato da tag. Uma tag estável exata, como `v1.0.1`, exige os secrets `SIGNING_CERTIFICATE_BASE64` e `SIGNING_CERTIFICATE_PASSWORD`, assina e valida o EXE e publica uma release oficial. Uma tag com sufixo, como `v1.0.1-test.1`, `v1.0.1-beta.1` ou `v1.0.1-rc.1`, publica uma prerelease de teste sem assinatura. Tags `v*` fora desses formatos falham. O link público do site usa `releases/latest`, que ignora prereleases; para testar uma versão não assinada, baixe o artefato diretamente na página da prerelease correspondente.
 
 Para distribuir os recursos de vídeo sem exigir configuração manual, coloque `ffmpeg.exe` e `ffprobe.exe` em `assets\ffmpeg` antes de gerar o executável. Se esses arquivos não estiverem presentes, o aplicativo procurará o FFmpeg no `PATH` do Windows.
 

@@ -12,6 +12,35 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Classify build channel
+        id: release
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF_TYPE -ne 'tag' -or -not $env:GITHUB_REF_NAME.StartsWith('v')) {
+            "is_release=false" >> $env:GITHUB_OUTPUT
+            "is_prerelease=false" >> $env:GITHUB_OUTPUT
+            "requires_signing=false" >> $env:GITHUB_OUTPUT
+            "artifact_name=NeivaPlanner-Windows-CI" >> $env:GITHUB_OUTPUT
+            exit 0
+          }
+
+          if ($env:GITHUB_REF_NAME -match '^v\d+\.\d+\.\d+$') {
+            "is_release=true" >> $env:GITHUB_OUTPUT
+            "is_prerelease=false" >> $env:GITHUB_OUTPUT
+            "requires_signing=true" >> $env:GITHUB_OUTPUT
+            "artifact_name=NeivaPlanner-Windows-STABLE-SIGNED" >> $env:GITHUB_OUTPUT
+            exit 0
+          }
+
+          if ($env:GITHUB_REF_NAME -match '^v\d+\.\d+\.\d+-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*$') {
+            "is_release=true" >> $env:GITHUB_OUTPUT
+            "is_prerelease=true" >> $env:GITHUB_OUTPUT
+            "requires_signing=false" >> $env:GITHUB_OUTPUT
+            "artifact_name=NeivaPlanner-Windows-PRERELEASE-UNSIGNED" >> $env:GITHUB_OUTPUT
+            exit 0
+          }
+
+          throw "Tag de release inválida: $env:GITHUB_REF_NAME. Use vX.Y.Z para produção ou vX.Y.Z-sufixo para prerelease."
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -50,7 +79,7 @@ jobs:
             throw 'FFmpeg ou FFprobe não foi incorporado ao executável.'
           }
       - name: Sign release executable
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: steps.release.outputs.requires_signing == 'true'
         shell: pwsh
         env:
           SIGNING_CERTIFICATE_BASE64: ${{ secrets.SIGNING_CERTIFICATE_BASE64 }}
@@ -69,15 +98,25 @@ jobs:
       - name: Upload Windows executable
         uses: actions/upload-artifact@v4
         with:
-          name: NeivaPlanner-Windows-${{ github.sha }}
+          name: ${{ steps.release.outputs.artifact_name }}-${{ github.sha }}
           path: dist/NeivaPlanner_v1.exe
           if-no-files-found: error
           retention-days: 14
       - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: steps.release.outputs.is_release == 'true'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          IS_PRERELEASE: ${{ steps.release.outputs.is_prerelease }}
         run: |
           Copy-Item -LiteralPath dist/NeivaPlanner_v1.exe -Destination dist/rafaau_v1.exe
-          gh release create $env:GITHUB_REF_NAME dist/rafaau_v1.exe --title "rafaau $env:GITHUB_REF_NAME" --generate-notes --verify-tag
+          $title = "rafaau $env:GITHUB_REF_NAME"
+          $arguments = @(
+            'release', 'create', $env:GITHUB_REF_NAME, 'dist/rafaau_v1.exe',
+            '--title', $title, '--generate-notes', '--verify-tag'
+          )
+          if ($env:IS_PRERELEASE -eq 'true') {
+            $arguments += '--prerelease'
+          }
+          & gh @arguments
+          if ($LASTEXITCODE -ne 0) { throw 'Falha ao publicar a release no GitHub.' }
