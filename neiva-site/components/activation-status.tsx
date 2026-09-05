@@ -19,16 +19,25 @@ export function ActivationStatus() {
     let cancelled = false;
     let attempts = 0;
     const check = async () => {
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 10000);
       try {
-        const response = await fetch(`${API_URL}/v1/billing/orders/${encodeURIComponent(order)}?claim=${encodeURIComponent(claim)}`);
-        const data = await response.json() as { license_active?: boolean };
+        const response = await fetch(`${API_URL}/v1/billing/orders/${encodeURIComponent(order)}?claim=${encodeURIComponent(claim)}`, { signal: controller.signal });
+        const data = await response.json().catch(() => ({})) as { license_active?: boolean };
         if (cancelled) return;
+        if (!response.ok) throw new Error('status');
         if (data.license_active) { setMessage('Pagamento confirmado. Sua licenca esta ativa: abra o rafaau e entre com seu e-mail e senha.'); return; }
         attempts += 1;
         setMessage('Pagamento enviado. Estamos confirmando sua licenca...');
         if (attempts < 6) window.setTimeout(check, 2500);
       } catch {
-        if (!cancelled) setMessage('Pagamento enviado. Aguarde a confirmacao e entre no aplicativo com sua conta.');
+        attempts += 1;
+        if (!cancelled) {
+          setMessage('Pagamento enviado. Nao foi possivel consultar a confirmacao agora; tente entrar no aplicativo em alguns instantes.');
+          if (attempts < 3) window.setTimeout(check, 4000);
+        }
+      } finally {
+        window.clearTimeout(timeout);
       }
     };
     void check();

@@ -4,6 +4,7 @@ import sqlite3
 import sys
 import os
 import shutil
+from datetime import date
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,6 +17,7 @@ if getattr(sys, "frozen", False):
 else:
     DATABASE_DIR = ROOT_DIR / "database"
 DATABASE_PATH = DATABASE_DIR / "content_planner.db"
+VALID_STATUSES = {"Pendente", "Em andamento", "Concluído"}
 
 
 def account_database_path() -> Path:
@@ -39,6 +41,7 @@ class Client:
     posting_frequency: str
     objective: str
     notes: str
+    operation_id: str | None = None
 
 
 @dataclass(slots=True)
@@ -53,6 +56,7 @@ class Post:
     caption: str
     cta: str
     status: str
+    operation_id: str | None = None
 
 
 class Database:
@@ -65,6 +69,10 @@ class Database:
     def _migrate_legacy_database(self) -> None:
         """Preserva bancos de versões portáteis anteriores ao mudar para LocalAppData."""
         if self.db_path.exists() or self.db_path == DATABASE_PATH:
+            return
+        # Bancos por conta não recebem dados legados automaticamente: sem uma
+        # confirmação de titularidade, a primeira conta poderia herdar dados de outra.
+        if self.db_path.parent.parent.name == "accounts":
             return
         marker = DATABASE_DIR / ".account_migration_complete"
         candidates = [DATABASE_PATH]
@@ -124,7 +132,15 @@ class Database:
                 )
                 """
             )
+            client_columns = {row[1] for row in conn.execute("PRAGMA table_info(clientes)")}
+            if "operation_id" not in client_columns:
+                conn.execute("ALTER TABLE clientes ADD COLUMN operation_id TEXT DEFAULT NULL")
+            post_columns = {row[1] for row in conn.execute("PRAGMA table_info(posts)")}
+            if "operation_id" not in post_columns:
+                conn.execute("ALTER TABLE posts ADD COLUMN operation_id TEXT DEFAULT NULL")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_posts_client_date ON posts(client_id, post_date)")
+            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_clientes_operation_id ON clientes(operation_id) WHERE operation_id IS NOT NULL")
+            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_posts_operation_id ON posts(operation_id) WHERE operation_id IS NOT NULL")
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS configuracoes (
@@ -135,26 +151,33 @@ class Database:
             )
 
     def create_client(self, client: Client) -> int:
+        self._validate_client(client)
         with self.connect() as conn:
-            cur = conn.execute(
-                """
-                INSERT INTO clientes (name, niche, instagram, posting_frequency, objective, notes)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    self._clean(client.name),
-                    self._clean(client.niche),
-                    self._clean(client.instagram),
-                    self._clean(client.posting_frequency),
-                    self._clean(client.objective),
-                    self._clean(client.notes),
-                ),
-            )
+            try:
+                cur = conn.execute(
+                    """
+                    INSERT INTO clientes (name, niche, instagram, posting_frequency, objective, notes, operation_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        self._clean(client.name), self._clean(client.niche), self._clean(client.instagram),
+                        self._clean(client.posting_frequency), self._clean(client.objective), self._clean(client.notes),
+                        client.operation_id,
+                    ),
+                )
+            except sqlite3.IntegrityError:
+                if not client.operation_id:
+                    raise
+                row = conn.execute("SELECT id FROM clientes WHERE operation_id=?", (client.operation_id,)).fetchone()
+                if row:
+                    return int(row["id"])
+                raise
             return int(cur.lastrowid)
 
     def update_client(self, client: Client) -> None:
         if client.id is None:
             raise ValueError("Client id is required for update.")
+        self._validate_client(client)
         with self.connect() as conn:
             conn.execute(
                 """
@@ -197,30 +220,34 @@ class Database:
         return self._row_to_client(row) if row else None
 
     def create_post(self, post: Post) -> int:
+        self._validate_post(post)
         with self.connect() as conn:
-            cur = conn.execute(
-                """
-                INSERT INTO posts
-                (client_id, post_date, content_type, platform, title, description, caption, cta, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    post.client_id,
-                    post.post_date,
-                    post.content_type,
-                    post.platform,
-                    self._clean(post.title),
-                    self._clean(post.description),
-                    self._clean(post.caption),
-                    self._clean(post.cta),
-                    post.status,
-                ),
-            )
+            try:
+                cur = conn.execute(
+                    """
+                    INSERT INTO posts
+                    (client_id, post_date, content_type, platform, title, description, caption, cta, status, operation_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        post.client_id, post.post_date, post.content_type, post.platform, self._clean(post.title),
+                        self._clean(post.description), self._clean(post.caption), self._clean(post.cta), post.status,
+                        post.operation_id,
+                    ),
+                )
+            except sqlite3.IntegrityError:
+                if not post.operation_id:
+                    raise
+                row = conn.execute("SELECT id FROM posts WHERE operation_id=?", (post.operation_id,)).fetchone()
+                if row:
+                    return int(row["id"])
+                raise
             return int(cur.lastrowid)
 
     def update_post(self, post: Post) -> None:
         if post.id is None:
             raise ValueError("Post id is required for update.")
+        self._validate_post(post)
         with self.connect() as conn:
             conn.execute(
                 """
@@ -329,6 +356,24 @@ class Database:
         return value.strip()
 
     @staticmethod
+    def _validate_client(client: Client) -> None:
+        if not client.name.strip():
+            raise ValueError("Nome do cliente é obrigatório.")
+
+    @staticmethod
+    def _validate_post(post: Post) -> None:
+        if not post.title.strip():
+            raise ValueError("Título do conteúdo é obrigatório.")
+        try:
+            date.fromisoformat(post.post_date)
+        except ValueError as exc:
+            raise ValueError("Data do conteúdo inválida.") from exc
+        if post.status not in VALID_STATUSES:
+            raise ValueError("Status do conteúdo inválido.")
+        if not post.content_type.strip() or not post.platform.strip():
+            raise ValueError("Tipo e plataforma são obrigatórios.")
+
+    @staticmethod
     def _row_to_client(row: sqlite3.Row) -> Client:
         return Client(
             id=row["id"],
@@ -338,6 +383,7 @@ class Database:
             posting_frequency=row["posting_frequency"],
             objective=row["objective"],
             notes=row["notes"],
+            operation_id=row["operation_id"] if "operation_id" in row.keys() else None,
         )
 
     @staticmethod
@@ -353,4 +399,5 @@ class Database:
             caption=row["caption"],
             cta=row["cta"],
             status=row["status"],
+            operation_id=row["operation_id"] if "operation_id" in row.keys() else None,
         )

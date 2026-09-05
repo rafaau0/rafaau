@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+import threading
 import customtkinter as ctk
+import requests
 from tkinter import messagebox
 
-from .account_sessions import activate_account, current_account, remove_account, saved_accounts
+from .account_sessions import activate_account, current_account, remove_account, saved_accounts, token_for_account
 from .design_system import COLORS as UI, RADIUS, font, primary_button, secondary_button
 
 
@@ -13,6 +15,7 @@ class AccountManagerDialog(ctk.CTkToplevel):
     def __init__(self, parent, on_restart: Callable[[str], None]) -> None:
         super().__init__(parent)
         self._on_restart = on_restart
+        self._revoking = False
         self.title("Contas neste computador")
         self.geometry("520x520")
         self.minsize(460, 420)
@@ -55,14 +58,52 @@ class AccountManagerDialog(ctk.CTkToplevel):
     def _remove(self, account_id: str) -> None:
         if not messagebox.askyesno("Remover conta", "Remover esta conta salva deste computador?", parent=self):
             return
-        remove_account(account_id)
-        self._render()
+        self._revoke_and_remove(account_id)
 
     def _logout(self, account_id: str) -> None:
         if not messagebox.askyesno("Sair da conta", "Sair desta conta neste computador? As outras contas continuarão salvas.", parent=self):
             return
-        remove_account(account_id)
-        self._restart("logout")
+        self._revoke_and_remove(account_id, "logout")
+
+    def _revoke_and_remove(self, account_id: str, restart_action: str | None = None) -> None:
+        if self._revoking:
+            return
+        self._revoking = True
+        token = token_for_account(account_id)
+        for child in self.winfo_children():
+            try:
+                child.configure(state="disabled")
+            except Exception:
+                pass
+
+        def task() -> None:
+            try:
+                if token:
+                    response = requests.post(
+                        "https://neiva-ai-api.onrender.com/v1/auth/logout",
+                        headers={"Authorization": f"Bearer {token}"},
+                        timeout=20,
+                    )
+                    response.raise_for_status()
+            except requests.RequestException as exc:
+                def show_failure(message: str = str(exc)) -> None:
+                    self._revoking = False
+                    messagebox.showerror("Sair da conta", f"Não foi possível revogar esta sessão. Tente novamente conectado à internet.\n\n{message}", parent=self)
+                    self._render()
+                self.after(0, show_failure)
+                return
+
+            def finish() -> None:
+                self._revoking = False
+                remove_account(account_id)
+                if restart_action:
+                    self._restart(restart_action)
+                else:
+                    self._render()
+
+            self.after(0, finish)
+
+        threading.Thread(target=task, daemon=True).start()
 
     def _restart(self, action: str) -> None:
         self.grab_release()

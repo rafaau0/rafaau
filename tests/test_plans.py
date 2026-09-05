@@ -41,6 +41,20 @@ class PlanTests(unittest.TestCase):
             start_trello_oauth(client, None)
         self.assertEqual(raised.exception.status_code, 403)
 
+    def test_unverified_local_paid_plan_is_restricted(self) -> None:
+        account = SimpleNamespace(account_id="42", plan="pro")
+        with patch("content_planner.plan_rules.current_account", return_value=account), patch(
+            "content_planner.plan_rules.current_token", return_value="locally-edited-token"
+        ), patch("content_planner.plan_rules.requests.get", side_effect=RuntimeError("offline")):
+            with self.assertRaises(RuntimeError):
+                # Erros inesperados de programação não devem ser ocultados.
+                current_plan_rules()
+
+        with patch("content_planner.plan_rules.current_account", return_value=account), patch(
+            "content_planner.plan_rules.current_token", return_value="locally-edited-token"
+        ), patch("content_planner.plan_rules.requests.get", side_effect=__import__("requests").RequestException("offline")):
+            self.assertEqual(current_plan_rules().code, "free")
+
 
 if __name__ == "__main__":
     unittest.main()

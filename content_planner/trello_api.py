@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import threading
 from dataclasses import dataclass
 from typing import Any
 
@@ -17,14 +18,16 @@ class TrelloConfig:
     api_key: str
     token: str
     board_id: str
+    source_id: str = ""
 
     @classmethod
     def from_environment(cls, saved_values: dict[str, str] | None = None) -> "TrelloConfig":
         saved_values = saved_values or {}
         return cls(
-            api_key=os.getenv("TRELLO_API_KEY", saved_values.get("TRELLO_API_KEY", "")),
-            token=os.getenv("TRELLO_TOKEN", saved_values.get("TRELLO_TOKEN", "")),
-            board_id=os.getenv("TRELLO_BOARD_ID", saved_values.get("TRELLO_BOARD_ID", "")),
+            api_key=saved_values.get("TRELLO_API_KEY", "") or os.getenv("TRELLO_API_KEY", ""),
+            token=saved_values.get("TRELLO_TOKEN", "") or os.getenv("TRELLO_TOKEN", ""),
+            board_id=saved_values.get("TRELLO_BOARD_ID", "") or os.getenv("TRELLO_BOARD_ID", ""),
+            source_id=saved_values.get("TRELLO_SOURCE_ID", ""),
         )
 
     def is_complete(self) -> bool:
@@ -33,6 +36,9 @@ class TrelloConfig:
 
 class TrelloAPI:
     """Small Trello client kept independent from the desktop interface."""
+
+    _locks_guard = threading.Lock()
+    _card_locks: dict[str, threading.Lock] = {}
 
     def __init__(self, config: TrelloConfig | None = None) -> None:
         self.config = config or TrelloConfig.from_environment()
@@ -63,11 +69,11 @@ class TrelloAPI:
     def get_or_create_list(self, name: str) -> str:
         return self.find_list(name) or self.create_list(name)
 
-    @staticmethod
-    def _post_marker(post: Post) -> str:
+    def _post_marker(self, post: Post) -> str:
         if post.id is None:
             raise ValueError("Post sem identificador local.")
-        return f"<!-- neiva-planner-post:{post.id} -->"
+        namespace = self.config.source_id.strip()
+        return f"<!-- neiva-planner-post:{namespace}:{post.id} -->" if namespace else f"<!-- neiva-planner-post:{post.id} -->"
 
     def find_card_for_post(self, post: Post) -> str | None:
         marker = self._post_marker(post)
@@ -95,17 +101,24 @@ class TrelloAPI:
         response.raise_for_status()
         return str(response.json()["id"])
 
+    def get_or_create_card(self, list_id: str, post: Post) -> str:
+        marker = self._post_marker(post)
+        lock_key = f"{self.config.board_id}:{marker}"
+        with self._locks_guard:
+            lock = self._card_locks.setdefault(lock_key, threading.Lock())
+        with lock:
+            return self.find_card_for_post(post) or self.create_card(list_id, post)
+
     def create_cards_for_posts(self, list_name: str, posts: list[Post]) -> dict[int, str]:
         list_id = self.get_or_create_list(list_name)
         created: dict[int, str] = {}
         for post in posts:
             if post.id is None:
                 continue
-            created[post.id] = self.find_card_for_post(post) or self.create_card(list_id, post)
+            created[post.id] = self.get_or_create_card(list_id, post)
         return created
 
-    @staticmethod
-    def _build_description(post: Post) -> str:
+    def _build_description(self, post: Post) -> str:
         return (
             f"Status: {post.status}\n"
             f"Plataforma: {post.platform}\n"
@@ -113,5 +126,5 @@ class TrelloAPI:
             f"Data: {post.post_date}\n\n"
             f"Descrição:\n{post.description}\n\n"
             f"Legenda:\n{post.caption}\n\n"
-            f"CTA:\n{post.cta}\n\n{TrelloAPI._post_marker(post)}"
+            f"CTA:\n{post.cta}\n\n{self._post_marker(post)}"
         )

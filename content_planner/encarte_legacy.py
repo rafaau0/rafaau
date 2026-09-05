@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -191,6 +192,47 @@ function findAllArtLayersByNames(container, names, found) {{
     }}
   }}
   return found;
+}}
+
+function findFirstImageLayer(container) {{
+  for (var i = 0; i < container.layers.length; i++) {{
+    var layer = container.layers[i];
+    if (layer.typename === "ArtLayer" && layer.kind !== LayerKind.TEXT) return layer;
+    if (layer.typename === "LayerSet") {{
+      var nested = findFirstImageLayer(layer);
+      if (nested) return nested;
+    }}
+  }}
+  return null;
+}}
+
+function replaceProductImage(doc, number, imagePath) {{
+  if (!imagePath) return false;
+  var imageFile = new File(imagePath);
+  if (!imageFile.exists) return false;
+  var imageGroup = findLayerSet(doc, "GRUPO" + number) || findLayerSet(doc, "GRUPO_" + number);
+  if (!imageGroup) return false;
+  var target = findFirstImageLayer(imageGroup);
+  if (!target) return false;
+  var bounds = target.bounds;
+  var left = bounds[0].as("px"), top = bounds[1].as("px"), right = bounds[2].as("px"), bottom = bounds[3].as("px");
+  var sourceDoc = app.open(imageFile);
+  var replacement = sourceDoc.activeLayer.duplicate(imageGroup, ElementPlacement.PLACEATBEGINNING);
+  sourceDoc.close(SaveOptions.DONOTSAVECHANGES);
+  app.activeDocument = doc;
+  var replacementBounds = replacement.bounds;
+  var sourceWidth = replacementBounds[2].as("px") - replacementBounds[0].as("px");
+  var sourceHeight = replacementBounds[3].as("px") - replacementBounds[1].as("px");
+  if (sourceWidth <= 0 || sourceHeight <= 0) return false;
+  var scale = Math.max((right - left) / sourceWidth, (bottom - top) / sourceHeight) * 100;
+  replacement.resize(scale, scale, AnchorPosition.MIDDLECENTER);
+  replacementBounds = replacement.bounds;
+  var currentX = (replacementBounds[0].as("px") + replacementBounds[2].as("px")) / 2;
+  var currentY = (replacementBounds[1].as("px") + replacementBounds[3].as("px")) / 2;
+  replacement.translate((left + right) / 2 - currentX, (top + bottom) / 2 - currentY);
+  replacement.name = target.name;
+  target.remove();
+  return true;
 }}
 
 function replaceOfferDate(text, dateValue) {{
@@ -446,6 +488,11 @@ for (var i = 0; i < products.length; i++) {{
   }} else {{
     missing.push("PRECO_" + number + " / VALOR_" + number);
   }}
+
+  if (products[i].image) {{
+    if (replaceProductImage(doc, number, products[i].image)) changed++;
+    else missing.push("FOTO_" + number);
+  }}
 }}
 
 doc.saveAs(outputFile);
@@ -468,17 +515,23 @@ if (missing.length) {{
   }}
 }}
 logFile.close();
+if (missing.length) throw new Error("O modelo está incompleto: " + missing.join(", "));
 """
 
 
 def run_photoshop_script(photoshop_path: Path, jsx_path: Path) -> None:
-    vbs_path = Path(tempfile.gettempdir()) / "preencher_psd_photoshop.vbs"
+    vbs_path = Path(tempfile.gettempdir()) / f"preencher_psd_photoshop_{uuid.uuid4().hex}.vbs"
     vbs = f"""Set app = CreateObject("Photoshop.Application")
 app.Visible = True
 app.DoJavaScriptFile "{str(jsx_path)}"
 """
     vbs_path.write_text(vbs, encoding="utf-16")
-    subprocess.run(["cscript.exe", "//nologo", str(vbs_path)], check=True)
+    try:
+        subprocess.run(["cscript.exe", "//nologo", str(vbs_path)], check=True, timeout=60 * 60 * 2)
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError("O Photoshop excedeu o tempo limite de 2 horas.") from exc
+    finally:
+        vbs_path.unlink(missing_ok=True)
 
 
 def main() -> int:

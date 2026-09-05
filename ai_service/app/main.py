@@ -7,6 +7,7 @@ import html
 import json
 import logging
 import os
+import re
 import secrets
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 from datetime import datetime, timedelta, timezone
@@ -19,7 +20,8 @@ from fastapi.responses import HTMLResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field, field_validator
 from requests_oauthlib import OAuth1Session
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint, create_engine, inspect, select, text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint, create_engine, inspect, select, text, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
 
@@ -101,6 +103,8 @@ class Subscription(Base):
     plan_code: Mapped[str] = mapped_column(String(30))
     status: Mapped[str] = mapped_column(String(30), default="pending")
     current_period_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_event_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_event_rank: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
@@ -122,12 +126,23 @@ class AccountSession(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
+class LoginThrottle(Base):
+    """Contador distribuído de falhas sem persistir e-mail ou endereço de rede."""
+    __tablename__ = "login_throttles"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    identity_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    window_started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class CheckoutOrder(Base):
     """Pedido criado antes do Checkout e conciliado pelo webhook do Asaas."""
     __tablename__ = "checkout_orders"
     id: Mapped[int] = mapped_column(primary_key=True)
     public_id: Mapped[str] = mapped_column(String(80), unique=True, index=True)
     claim_token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    idempotency_key: Mapped[str | None] = mapped_column(String(120), unique=True, nullable=True, index=True)
     customer_name: Mapped[str] = mapped_column(String(120))
     customer_email: Mapped[str] = mapped_column(String(254), index=True)
     account_id: Mapped[int | None] = mapped_column(ForeignKey("accounts.id"), nullable=True, index=True)
@@ -200,12 +215,22 @@ class AccountRegisterRequest(BaseModel):
     @field_validator("name")
     @classmethod
     def normalize_name(cls, value: str) -> str:
-        return " ".join(value.split())
+        value = " ".join(value.split())
+        if len(value) < 2:
+            raise ValueError("Informe um nome valido.")
+        return value
 
     @field_validator("email")
     @classmethod
     def validate_email(cls, value: str) -> str:
         return normalize_email(value)
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, value: str) -> str:
+        if not value.strip() or len(value.strip()) < 8:
+            raise ValueError("A senha deve ter pelo menos 8 caracteres nao vazios.")
+        return value
 
 
 class AccountLoginRequest(BaseModel):
@@ -231,16 +256,65 @@ PLANS = {
 
 def normalize_email(value: str) -> str:
     email = value.strip().lower()
+    if any(char.isspace() for char in email):
+        raise ValueError("Informe um e-mail valido.")
     if email.count("@") != 1 or email.startswith("@") or email.endswith("@"):
         raise ValueError("Informe um e-mail valido.")
     local, domain = email.split("@")
-    if not local or "." not in domain or domain.startswith(".") or domain.endswith("."):
+    if not local or "." not in domain or domain.startswith(".") or domain.endswith(".") or not re.fullmatch(r"[a-z0-9.!#$%&'*+/=?^_`{|}~-]+", local) or not re.fullmatch(r"[a-z0-9.-]+", domain):
         raise ValueError("Informe um e-mail valido.")
     return email
 
 
 def token_hash(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def login_identity(email: str, forwarded_for: str | None, real_ip: str | None) -> str:
+    origin = (forwarded_for.split(",", 1)[0].strip() if isinstance(forwarded_for, str) else "")
+    origin = origin or (real_ip.strip() if isinstance(real_ip, str) else "") or "unknown"
+    return token_hash(f"{email.strip().lower()}|{origin[:120]}")
+
+
+def check_login_limit(session: Session, identity: str) -> None:
+    throttle = session.scalar(select(LoginThrottle).where(LoginThrottle.identity_hash == identity))
+    if not throttle or not throttle.locked_until:
+        return
+    locked_until = throttle.locked_until
+    if locked_until.tzinfo is None:
+        locked_until = locked_until.replace(tzinfo=timezone.utc)
+    if locked_until > datetime.now(timezone.utc):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Muitas tentativas. Aguarde alguns minutos antes de tentar novamente.")
+
+
+def record_login_failure(session: Session, identity: str) -> None:
+    now = datetime.now(timezone.utc)
+    throttle = session.scalar(select(LoginThrottle).where(LoginThrottle.identity_hash == identity).with_for_update())
+    if throttle is None:
+        throttle = LoginThrottle(identity_hash=identity, attempts=0, window_started_at=now)
+        session.add(throttle)
+    window_started = throttle.window_started_at
+    if window_started.tzinfo is None:
+        window_started = window_started.replace(tzinfo=timezone.utc)
+    if window_started < now - timedelta(minutes=15):
+        throttle.attempts = 0
+        throttle.window_started_at = now
+        throttle.locked_until = None
+    throttle.attempts += 1
+    if throttle.attempts >= 8:
+        throttle.locked_until = now + timedelta(minutes=15)
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        # Uma requisição concorrente criou o contador; registre esta tentativa nela.
+        record_login_failure(session, identity)
+
+
+def clear_login_failures(session: Session, identity: str) -> None:
+    throttle = session.scalar(select(LoginThrottle).where(LoginThrottle.identity_hash == identity))
+    if throttle:
+        session.delete(throttle)
 
 
 def integration_encrypt(value: str) -> str:
@@ -288,6 +362,7 @@ def verify_password(password: str, encoded: str) -> bool:
 
 
 def new_account_session(session: Session, account: Account) -> str:
+    session.execute(text("DELETE FROM account_sessions WHERE expires_at < :now"), {"now": datetime.now(timezone.utc)})
     raw_token = f"neiva_web_{secrets.token_urlsafe(32)}"
     session.add(AccountSession(
         account_id=account.id,
@@ -304,6 +379,13 @@ def new_activation_code() -> str:
 def activate_paid_order(session: Session, order: CheckoutOrder) -> None:
     """Cria uma Ãºnica licenÃ§a para um pedido confirmado pelo Asaas."""
     if order.client_id is not None:
+        client = session.get(Client, order.client_id)
+        if client:
+            plan = PLANS[order.plan_code]
+            client.monthly_limit = plan["ai_credits"]
+            client.device_limit = plan["devices"]
+            client.plan_code = order.plan_code
+            client.active = True
         order.status = "paid"
         return
     plan = PLANS[order.plan_code]
@@ -356,11 +438,34 @@ def current_client(
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Chave de acesso ausente.")
     client = session.scalar(select(Client).where(Client.token_hash == token_hash(token)))
+    device_token = None
     if client is None:
         device_token = session.scalar(select(DeviceToken).where(DeviceToken.token_hash == token_hash(token)))
         client = session.get(Client, device_token.client_id) if device_token else None
     if not client or not client.active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Chave de acesso inválida.")
+    if client.account_id:
+        account = session.get(Account, client.account_id)
+        if not account or not account.active:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Conta indisponivel.")
+    if device_token:
+        reference = device_token.last_seen_at or device_token.created_at
+        if reference.tzinfo is None:
+            reference = reference.replace(tzinfo=timezone.utc)
+        if reference < datetime.now(timezone.utc) - timedelta(days=90):
+            session.delete(device_token)
+            session.commit()
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sua sessao expirou. Entre novamente.")
+        device_token.last_seen_at = datetime.now(timezone.utc)
+        session.commit()
+    if client.plan_code in {"essencial", "pro"}:
+        subscription = session.scalar(select(Subscription).where(Subscription.client_id == client.id).order_by(Subscription.id.desc()))
+        if subscription:
+            period_end = subscription.current_period_end
+            if period_end and period_end.tzinfo is None:
+                period_end = period_end.replace(tzinfo=timezone.utc)
+            if subscription.status not in {"active", "pending_cancellation"} or (period_end and period_end < datetime.now(timezone.utc)):
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sua assinatura nao esta ativa.")
     return client
 
 
@@ -379,18 +484,38 @@ def current_account(
     return account
 
 
-def consume_quota(session: Session, client: Client) -> None:
+def consume_quota(session: Session, client: Client) -> tuple[int, str]:
     if client.plan_code == "free":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="A análise com IA está disponível nos planos Essencial e Pro.")
     period = datetime.now(timezone.utc).strftime("%Y-%m")
-    usage = session.scalar(select(MonthlyUsage).where(MonthlyUsage.client_id == client.id, MonthlyUsage.period == period))
-    if usage is None:
-        usage = MonthlyUsage(client_id=client.id, period=period, requests_count=0)
-        session.add(usage)
-        session.flush()
-    if usage.requests_count >= client.monthly_limit:
+    result = session.execute(
+        update(MonthlyUsage)
+        .where(MonthlyUsage.client_id == client.id, MonthlyUsage.period == period, MonthlyUsage.requests_count < client.monthly_limit)
+        .values(requests_count=MonthlyUsage.requests_count + 1)
+    )
+    if result.rowcount == 0:
+        exists = session.scalar(select(MonthlyUsage.id).where(MonthlyUsage.client_id == client.id, MonthlyUsage.period == period))
+        if exists is None:
+            try:
+                usage = MonthlyUsage(client_id=client.id, period=period, requests_count=1)
+                session.add(usage)
+                session.commit()
+                return client.id, period
+            except IntegrityError:
+                session.rollback()
+                return consume_quota(session, client)
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Limite mensal de análises atingido.")
-    usage.requests_count += 1
+    session.commit()
+    return client.id, period
+
+
+def refund_quota(session: Session, reservation: tuple[int, str]) -> None:
+    client_id, period = reservation
+    session.execute(
+        update(MonthlyUsage)
+        .where(MonthlyUsage.client_id == client_id, MonthlyUsage.period == period, MonthlyUsage.requests_count > 0)
+        .values(requests_count=MonthlyUsage.requests_count - 1)
+    )
     session.commit()
 
 
@@ -431,10 +556,28 @@ def ask_openai(payload: CutsRequest) -> list[dict]:
         raise RuntimeError("Não foi possível conectar ao provedor de IA.") from exc
     if not response.ok:
         raise RuntimeError("O provedor de IA recusou a análise. Tente novamente em alguns instantes.")
-    data = response.json()
     try:
+        data = response.json()
+        if not isinstance(data, dict):
+            raise TypeError("Resposta externa não é um objeto.")
         output = data.get("output_text") or next(part["text"] for item in data["output"] for part in item.get("content", []) if part.get("type") == "output_text")
-        return json.loads(output)["cuts"]
+        raw_cuts = json.loads(output)["cuts"]
+        lower = min(item.start for item in payload.subtitles)
+        upper = max(item.end for item in payload.subtitles)
+        validated: list[dict] = []
+        for item in sorted(raw_cuts, key=lambda value: float(value["start"])):
+            start = max(lower, float(item["start"]))
+            end = min(upper, float(item["end"]))
+            title = str(item["title"]).strip()
+            summary = str(item["summary"]).strip()
+            if not title or not summary or end <= start or not 20 <= end - start <= 90:
+                continue
+            if any(start < saved["end"] and end > saved["start"] for saved in validated):
+                continue
+            validated.append({"start": start, "end": end, "title": title, "summary": summary, "score": max(0, min(100, int(item["score"])))})
+            if len(validated) >= payload.limit:
+                break
+        return validated
     except (KeyError, TypeError, ValueError, StopIteration, json.JSONDecodeError) as exc:
         raise RuntimeError("O provedor retornou uma resposta inválida.") from exc
 
@@ -466,7 +609,8 @@ def initialize_database() -> None:
     additions = {
         "clients": {"account_id": "INTEGER", "device_limit": "INTEGER DEFAULT 2", "plan_code": "VARCHAR(30) DEFAULT 'legacy'"},
         "device_tokens": {"device_id": "VARCHAR(120)", "last_seen_at": "TIMESTAMP"},
-        "checkout_orders": {"account_id": "INTEGER"},
+        "checkout_orders": {"account_id": "INTEGER", "idempotency_key": "VARCHAR(120)"},
+        "subscriptions": {"last_event_at": "TIMESTAMP", "last_event_rank": "INTEGER DEFAULT 0"},
     }
     inspector = inspect(engine)
     with engine.begin() as connection:
@@ -475,6 +619,7 @@ def initialize_database() -> None:
             for column_name, definition in columns.items():
                 if column_name not in existing:
                     connection.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}"))
+        connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_checkout_orders_idempotency_key ON checkout_orders (idempotency_key)"))
 
 
 @app.get("/health")
@@ -495,12 +640,6 @@ def account_response(account: Account, client: Client | None = None) -> dict:
 def ensure_free_client(session: Session, account: Account) -> Client:
     client = session.scalar(select(Client).where(Client.account_id == account.id))
     if client:
-        if not client.active:
-            plan = PLANS["free"]
-            client.active = True
-            client.plan_code = "free"
-            client.monthly_limit = plan["ai_credits"]
-            client.device_limit = plan["devices"]
         return client
     plan = PLANS["free"]
     client = Client(
@@ -528,10 +667,19 @@ def register_account(payload: AccountRegisterRequest, session: Session = Depends
 
 
 @app.post("/v1/auth/sign-in")
-def sign_in_account(payload: AccountLoginRequest, session: Session = Depends(db_session)) -> dict:
+def sign_in_account(
+    payload: AccountLoginRequest,
+    session: Session = Depends(db_session),
+    x_forwarded_for: str | None = Header(default=None, alias="X-Forwarded-For"),
+    x_real_ip: str | None = Header(default=None, alias="X-Real-IP"),
+) -> dict:
+    identity = login_identity(payload.email, x_forwarded_for, x_real_ip)
+    check_login_limit(session, identity)
     account = session.scalar(select(Account).where(Account.email == payload.email))
     if not account or not account.active or not verify_password(payload.password, account.password_hash):
+        record_login_failure(session, identity)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="E-mail ou senha incorretos.")
+    clear_login_failures(session, identity)
     client = ensure_free_client(session, account)
     access_token = new_account_session(session, account)
     session.commit()
@@ -539,14 +687,35 @@ def sign_in_account(payload: AccountLoginRequest, session: Session = Depends(db_
 
 
 @app.post("/v1/auth/app-login")
-def app_login(payload: AppLoginRequest, session: Session = Depends(db_session)) -> dict:
+def app_login(
+    payload: AppLoginRequest,
+    session: Session = Depends(db_session),
+    x_forwarded_for: str | None = Header(default=None, alias="X-Forwarded-For"),
+    x_real_ip: str | None = Header(default=None, alias="X-Real-IP"),
+) -> dict:
+    identity = login_identity(payload.email, x_forwarded_for, x_real_ip)
+    check_login_limit(session, identity)
     account = session.scalar(select(Account).where(Account.email == payload.email))
     if not account or not account.active or not verify_password(payload.password, account.password_hash):
+        record_login_failure(session, identity)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="E-mail ou senha incorretos.")
+    clear_login_failures(session, identity)
     client = ensure_free_client(session, account)
+    if not client.active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sua licença está suspensa. Regularize a assinatura para entrar.")
     device = session.scalar(select(DeviceToken).where(DeviceToken.client_id == client.id, DeviceToken.device_id == payload.device_id))
     if device is None:
-        active_devices = session.scalars(select(DeviceToken).where(DeviceToken.client_id == client.id, DeviceToken.device_id.is_not(None))).all()
+        cutoff = datetime.now(timezone.utc) - timedelta(days=90)
+        devices = session.scalars(select(DeviceToken).where(DeviceToken.client_id == client.id, DeviceToken.device_id.is_not(None))).all()
+        active_devices = []
+        for saved_device in devices:
+            reference = saved_device.last_seen_at or saved_device.created_at
+            if reference.tzinfo is None:
+                reference = reference.replace(tzinfo=timezone.utc)
+            if reference < cutoff:
+                session.delete(saved_device)
+            else:
+                active_devices.append(saved_device)
         if len(active_devices) >= client.device_limit:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"Seu plano permite ate {client.device_limit} dispositivos. Saia de um deles para entrar neste.")
         device = DeviceToken(client_id=client.id, token_hash="", device_id=payload.device_id)
@@ -556,6 +725,22 @@ def app_login(payload: AppLoginRequest, session: Session = Depends(db_session)) 
     device.last_seen_at = datetime.now(timezone.utc)
     session.commit()
     return {"access_token": raw_token, "account": account_response(account, client), "token_type": "bearer"}
+
+
+@app.post("/v1/auth/logout")
+def app_logout(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    session: Session = Depends(db_session),
+) -> dict[str, bool]:
+    """Revoga o token apresentado mesmo se a conta/licença já estiver desativada."""
+    raw_token = credentials.credentials if credentials else ""
+    if not raw_token:
+        return {"ok": True}
+    device = session.scalar(select(DeviceToken).where(DeviceToken.token_hash == token_hash(raw_token)))
+    if device:
+        session.delete(device)
+        session.commit()
+    return {"ok": True}
 
 
 @app.get("/v1/auth/session")
@@ -596,7 +781,7 @@ def start_trello_oauth(client: Client = Depends(current_client), session: Sessio
     callback_url = f"{public_api_url}/v1/integrations/trello/callback"
     oauth = OAuth1Session(api_key, client_secret=api_secret, callback_uri=callback_url)
     try:
-        request_token = oauth.fetch_request_token(TRELLO_REQUEST_TOKEN_URL)
+        request_token = oauth.fetch_request_token(TRELLO_REQUEST_TOKEN_URL, timeout=20)
         oauth_token = request_token["oauth_token"]
         oauth_secret = request_token["oauth_token_secret"]
     except (requests.RequestException, KeyError, ValueError) as exc:
@@ -652,7 +837,7 @@ def trello_oauth_callback(
         verifier=oauth_verifier,
     )
     try:
-        access = oauth.fetch_access_token(TRELLO_ACCESS_TOKEN_URL)
+        access = oauth.fetch_access_token(TRELLO_ACCESS_TOKEN_URL, timeout=20)
         access_token = access["oauth_token"]
     except (requests.RequestException, KeyError, ValueError) as exc:
         pending.status = "failed"
@@ -746,7 +931,10 @@ def list_plans() -> dict:
 
 @app.post("/v1/billing/checkout")
 def create_checkout(
-    payload: CheckoutRequest, account: Account = Depends(current_account), session: Session = Depends(db_session)
+    payload: CheckoutRequest,
+    account: Account = Depends(current_account),
+    session: Session = Depends(db_session),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> dict[str, str]:
     """Cria uma sessão de checkout recorrente hospedada pelo Asaas."""
     plan = PLANS.get(payload.plan_code)
@@ -756,17 +944,38 @@ def create_checkout(
         raise HTTPException(status_code=400, detail="O plano Grátis não exige checkout.")
     if not api_key or not base_url:
         raise HTTPException(status_code=503, detail="Checkout ainda não configurado.")
-    claim_token = secrets.token_urlsafe(32)
+    key = (idempotency_key or "").strip()
+    if not 16 <= len(key) <= 120:
+        raise HTTPException(status_code=400, detail="Chave de idempotência ausente ou inválida.")
+    claim_secret = os.getenv("CHECKOUT_CLAIM_SECRET", "") or os.getenv("ASAAS_WEBHOOK_TOKEN", "") or api_key
+    claim_token = urlsafe_b64encode(hmac.new(claim_secret.encode("utf-8"), f"{account.id}:{key}".encode("utf-8"), hashlib.sha256).digest()).decode("ascii").rstrip("=")
+    existing_order = session.scalar(select(CheckoutOrder).where(CheckoutOrder.idempotency_key == key, CheckoutOrder.account_id == account.id))
+    checkout_host = "https://sandbox.asaas.com" if "sandbox" in base_url else "https://asaas.com"
+    if existing_order:
+        if existing_order.plan_code != payload.plan_code:
+            raise HTTPException(status_code=409, detail="Esta tentativa já foi usada para outro plano.")
+        if not existing_order.checkout_id:
+            raise HTTPException(status_code=409, detail="Checkout ainda está sendo criado. Tente novamente em instantes.")
+        return {
+            "checkout_url": f"{checkout_host}/checkoutSession/show?id={existing_order.checkout_id}",
+            "order_id": existing_order.public_id,
+            "claim_token": claim_token,
+        }
     checkout_order = CheckoutOrder(
         public_id=secrets.token_urlsafe(18),
         claim_token_hash=token_hash(claim_token),
+        idempotency_key=key,
         customer_name=account.name,
         customer_email=account.email,
         account_id=account.id,
         plan_code=payload.plan_code,
     )
     session.add(checkout_order)
-    session.flush()
+    try:
+        session.flush()
+    except IntegrityError as exc:
+        session.rollback()
+        raise HTTPException(status_code=409, detail="Checkout duplicado em processamento. Tente novamente em instantes.") from exc
     tomorrow = (datetime.now(timezone.utc) + timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
     callback_base = os.getenv("SITE_URL", "").rstrip("/")
     if not callback_base or "localhost" in callback_base.lower() or "127.0.0.1" in callback_base:
@@ -790,7 +999,7 @@ def create_checkout(
             "subscription": {"cycle": "MONTHLY", "nextDueDate": tomorrow},
             "externalReference": checkout_order.public_id}
     try:
-        response = requests.post(f"{base_url}/checkouts", headers={"access_token": api_key, "Content-Type": "application/json", "User-Agent": "NeivaPlanner/1.0"}, json=body, timeout=30)
+        response = requests.post(f"{base_url}/checkouts", headers={"access_token": api_key, "Content-Type": "application/json", "User-Agent": "NeivaPlanner/1.0", "Idempotency-Key": key}, json=body, timeout=30)
     except requests.RequestException as exc:
         raise HTTPException(status_code=503, detail="Não foi possível abrir o checkout.") from exc
     if not response.ok:
@@ -812,13 +1021,16 @@ def create_checkout(
             pass
         logger.warning("Asaas checkout recusado: status=%s motivo=%s", response.status_code, message)
         raise HTTPException(status_code=502, detail=f"Asaas Sandbox: {message}")
-    checkout_id = response.json().get("id")
+    try:
+        response_data = response.json()
+        checkout_id = response_data.get("id") if isinstance(response_data, dict) else None
+    except (ValueError, TypeError):
+        checkout_id = None
     if not checkout_id:
         raise HTTPException(status_code=502, detail="O Asaas não retornou um checkout.")
     checkout_order.checkout_id = checkout_id
     checkout_order.status = "checkout_created"
     session.commit()
-    checkout_host = "https://sandbox.asaas.com" if "sandbox" in base_url else "https://asaas.com"
     return {
         "checkout_url": f"{checkout_host}/checkoutSession/show?id={checkout_id}",
         "order_id": checkout_order.public_id,
@@ -828,12 +1040,19 @@ def create_checkout(
 
 @app.post("/v1/cuts")
 def create_cuts(payload: CutsRequest, client: Client = Depends(current_client), session: Session = Depends(db_session)) -> dict:
-    consume_quota(session, client)
+    transcript_size = len("\n".join(item.text for item in payload.subtitles).encode("utf-8"))
+    if transcript_size > 220_000:
+        raise HTTPException(status_code=413, detail="A transcrição é grande demais para análise.")
+    if not os.getenv("OPENAI_API_KEY", ""):
+        raise HTTPException(status_code=503, detail="Serviço de IA ainda não configurado.")
+    reservation = consume_quota(session, client)
     try:
         return {"cuts": ask_openai(payload)}
     except HTTPException:
+        refund_quota(session, reservation)
         raise
     except RuntimeError as exc:
+        refund_quota(session, reservation)
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
@@ -865,6 +1084,8 @@ def asaas_webhook(
     expected = os.getenv("ASAAS_WEBHOOK_TOKEN", "")
     if not expected or not asaas_access_token or not hmac.compare_digest(asaas_access_token, expected):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Webhook não autorizado.")
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Payload de webhook inválido.")
     event_id = str(payload.get("id", "")).strip()
     if not event_id:
         raise HTTPException(status_code=400, detail="Evento sem identificador.")
@@ -872,6 +1093,8 @@ def asaas_webhook(
         return {"ok": True}
     event = str(payload.get("event", "")).strip()
     checkout = payload.get("checkout") or {}
+    if not isinstance(checkout, dict):
+        raise HTTPException(status_code=400, detail="Checkout inválido no webhook.")
     checkout_id = str(checkout.get("id", "")).strip()
     checkout_order = session.scalar(select(CheckoutOrder).where(CheckoutOrder.checkout_id == checkout_id)) if checkout_id else None
     if checkout_order:
@@ -883,7 +1106,13 @@ def asaas_webhook(
             checkout_order.status = "expired"
 
     payment = payload.get("payment") or {}
-    provider_subscription_id = str(payment.get("subscription", "")).strip()
+    subscription_payload = payload.get("subscription") or {}
+    if not isinstance(payment, dict) or not isinstance(subscription_payload, dict):
+        raise HTTPException(status_code=400, detail="Pagamento ou assinatura inválidos no webhook.")
+    raw_subscription = payment.get("subscription") or subscription_payload.get("id") or ""
+    if isinstance(raw_subscription, dict):
+        raw_subscription = raw_subscription.get("id", "")
+    provider_subscription_id = str(raw_subscription).strip()
     external_reference = str(payment.get("externalReference", "")).strip()
     if checkout_order is None and external_reference:
         checkout_order = session.scalar(select(CheckoutOrder).where(CheckoutOrder.public_id == external_reference))
@@ -902,17 +1131,62 @@ def asaas_webhook(
         session.flush()
     if subscription:
         client = session.get(Client, subscription.client_id)
-        if event in {"PAYMENT_CONFIRMED", "PAYMENT_RECEIVED"}:
+        def provider_date() -> datetime:
+            for source in (payment, subscription_payload, payload):
+                for key in ("confirmedDate", "paymentDate", "dateCreated", "dueDate"):
+                    raw = source.get(key) if isinstance(source, dict) else None
+                    if raw:
+                        try:
+                            parsed = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+                            return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+                        except ValueError:
+                            continue
+            return datetime.now(timezone.utc)
+
+        event_at = provider_date()
+        ranks = {
+            "CHECKOUT_PAID": 10, "PAYMENT_CONFIRMED": 10, "PAYMENT_RECEIVED": 10, "PAYMENT_OVERDUE": 20,
+            "SUBSCRIPTION_INACTIVATED": 30, "SUBSCRIPTION_DELETED": 30,
+            "PAYMENT_REFUNDED": 40, "PAYMENT_CHARGEBACK_REQUESTED": 40,
+        }
+        event_rank = ranks.get(event, 0)
+        previous_at = subscription.last_event_at
+        if previous_at and previous_at.tzinfo is None:
+            previous_at = previous_at.replace(tzinfo=timezone.utc)
+        apply_event = not previous_at or event_at > previous_at or (event_at == previous_at and event_rank >= subscription.last_event_rank)
+        if apply_event and event in {"CHECKOUT_PAID", "PAYMENT_CONFIRMED", "PAYMENT_RECEIVED"}:
             subscription.status = "active"
-            subscription.current_period_end = datetime.now(timezone.utc) + timedelta(days=31)
+            due_raw = payment.get("dueDate")
+            try:
+                due = datetime.fromisoformat(str(due_raw)).replace(tzinfo=timezone.utc) if due_raw else event_at
+            except ValueError:
+                due = event_at
+            subscription.current_period_end = max(event_at, due) + timedelta(days=31)
             if client:
+                plan = PLANS.get(subscription.plan_code)
+                if plan:
+                    client.plan_code = subscription.plan_code
+                    client.monthly_limit = plan["ai_credits"]
+                    client.device_limit = plan["devices"]
                 client.active = True
-        elif event == "PAYMENT_OVERDUE":
+        elif apply_event and event == "PAYMENT_OVERDUE":
             subscription.status = "past_due"
-        elif event in {"PAYMENT_REFUNDED", "PAYMENT_CHARGEBACK_REQUESTED"}:
+            if client:
+                client.active = False
+        elif apply_event and event in {"SUBSCRIPTION_INACTIVATED", "SUBSCRIPTION_DELETED"}:
+            period_end = subscription.current_period_end
+            if period_end and period_end.tzinfo is None:
+                period_end = period_end.replace(tzinfo=timezone.utc)
+            subscription.status = "pending_cancellation" if period_end and period_end > datetime.now(timezone.utc) else "cancelled"
+            if client and subscription.status == "cancelled":
+                client.active = False
+        elif apply_event and event in {"PAYMENT_REFUNDED", "PAYMENT_CHARGEBACK_REQUESTED"}:
             subscription.status = "suspended"
             if client:
                 client.active = False
+        if apply_event and event_rank:
+            subscription.last_event_at = event_at
+            subscription.last_event_rank = event_rank
     session.add(ProcessedWebhook(provider="asaas", event_id=event_id))
     session.commit()
     return {"ok": True}

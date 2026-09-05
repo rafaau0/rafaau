@@ -1,10 +1,10 @@
 'use client';
 
-import { type SyntheticEvent, useState } from 'react';
+import { type SyntheticEvent, useRef, useState } from 'react';
 
 type ApiResponse = {
   access_token?: string;
-  detail?: string;
+  detail?: unknown;
   order_id?: string;
   claim_token?: string;
   checkout_url?: string;
@@ -12,6 +12,37 @@ type ApiResponse = {
 
 const isPreview = typeof window !== 'undefined' && window.location.hostname.endsWith('-neiva-planner-site.rafaau0.workers.dev');
 const API_URL = isPreview ? 'https://neiva-ai-api-staging.onrender.com' : 'https://neiva-ai-api.onrender.com';
+
+function apiMessage(detail: unknown, fallback: string) {
+  if (typeof detail === 'string' && detail.trim()) return detail;
+  if (Array.isArray(detail)) {
+    const messages = detail.map((item) => typeof item === 'object' && item && 'msg' in item ? String(item.msg) : '').filter(Boolean);
+    if (messages.length) return messages.join(' ');
+  }
+  return fallback;
+}
+
+async function request(url: string, init: RequestInit, timeoutMs = 20000) {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (cause) {
+    if (cause instanceof DOMException && cause.name === 'AbortError') throw new Error('A operação demorou demais. Tente novamente.');
+    throw new Error('Não foi possível conectar ao serviço. Verifique sua internet e tente novamente.');
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
+async function responseData(response: Response): Promise<ApiResponse> {
+  try {
+    const data: unknown = await response.json();
+    return typeof data === 'object' && data !== null ? data as ApiResponse : {};
+  } catch {
+    return {};
+  }
+}
 
 export function CheckoutButton({ plan, featured }: { plan: string; featured?: boolean }) {
   const [open, setOpen] = useState(false);
@@ -23,17 +54,21 @@ export function CheckoutButton({ plan, featured }: { plan: string; featured?: bo
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const submitting = useRef(false);
+  const idempotencyKey = useRef('');
   const buttonClass = `block w-full rounded-lg py-4 text-center font-bold ${featured ? 'bg-[#FF263D] text-white hover:bg-[#D91E32]' : 'bg-[#17191F] text-white hover:bg-[#343841]'} transition disabled:opacity-60`;
 
   async function checkout(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (submitting.current) return;
     if (!existingAccount && password !== confirmPassword) { setError('As senhas precisam ser iguais.'); return; }
+    submitting.current = true;
     setLoading(true); setError('');
     try {
       const endpoint = existingAccount ? '/v1/auth/sign-in' : '/v1/auth/register';
       const body = existingAccount ? { email, password } : { name, email, password };
-      const authResponse = await fetch(`${API_URL}${endpoint}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      const authData = await authResponse.json() as ApiResponse;
+      const authResponse = await request(`${API_URL}${endpoint}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const authData = await responseData(authResponse);
       if (!authResponse.ok) {
         if (authResponse.status === 409 && !existingAccount) {
           setExistingAccount(true);
@@ -41,7 +76,7 @@ export function CheckoutButton({ plan, featured }: { plan: string; featured?: bo
           setLoading(false);
           return;
         }
-        throw new Error(authData.detail || 'Nao foi possivel acessar sua conta.');
+        throw new Error(apiMessage(authData.detail, 'Não foi possível acessar sua conta.'));
       }
       if (plan === 'free') {
         setSuccess(true);
@@ -49,16 +84,20 @@ export function CheckoutButton({ plan, featured }: { plan: string; featured?: bo
         return;
       }
       if (!authData.access_token) throw new Error('A API não retornou uma sessão válida.');
-      const response = await fetch(`${API_URL}/v1/billing/checkout`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authData.access_token}` }, body: JSON.stringify({ plan_code: plan }),
+      idempotencyKey.current ||= globalThis.crypto.randomUUID();
+      const response = await request(`${API_URL}/v1/billing/checkout`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authData.access_token}`, 'Idempotency-Key': idempotencyKey.current }, body: JSON.stringify({ plan_code: plan }),
       });
-      const data = await response.json() as ApiResponse;
-      if (!response.ok) throw new Error(data.detail || 'Nao foi possivel iniciar o checkout.');
+      const data = await responseData(response);
+      if (!response.ok) throw new Error(apiMessage(data.detail, 'Não foi possível iniciar o checkout.'));
       if (!data.order_id || !data.claim_token || !data.checkout_url) throw new Error('O checkout retornou dados incompletos.');
       localStorage.setItem(`neiva-order-${data.order_id}`, data.claim_token);
       window.location.href = data.checkout_url;
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Falha inesperada.'); setLoading(false);
+      setError(cause instanceof Error ? cause.message : 'Falha inesperada.');
+    } finally {
+      submitting.current = false;
+      setLoading(false);
     }
   }
 

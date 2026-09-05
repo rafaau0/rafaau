@@ -2,7 +2,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from .account_sessions import current_account
+import requests
+
+from .account_sessions import current_account, current_token, save_account
+
+
+API_URL = "https://neiva-ai-api.onrender.com"
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,4 +32,27 @@ RULES = {
 def current_plan_rules() -> PlanRules:
     account = current_account()
     # Licenças legadas mantêm todos os recursos para evitar perda de acesso.
-    return RULES.get(account.plan if account else None, RULES["pro"])
+    if account is None:
+        return RULES["pro"]
+    if account.plan == "free":
+        return RULES["free"]
+    if account.plan not in {"essencial", "pro"}:
+        return RULES["free"]
+    # Metadados do cofre local não autorizam recursos pagos por si sós. Uma
+    # concessão paga precisa ser confirmada pela API no início da interface.
+    token = current_token()
+    if not token:
+        return RULES["free"]
+    try:
+        response = requests.get(f"{API_URL}/v1/auth/session", headers={"Authorization": f"Bearer {token}"}, timeout=8)
+        data = response.json() if response.ok else {}
+        remote = data.get("account") if isinstance(data, dict) else None
+        if not isinstance(remote, dict) or str(remote.get("id")) != account.account_id:
+            return RULES["free"]
+        plan = str(remote.get("plan", ""))
+        if plan in {"essencial", "pro"} and data.get("license_active"):
+            save_account(remote, token)
+            return RULES[plan]
+    except (requests.RequestException, ValueError):
+        pass
+    return RULES["free"]

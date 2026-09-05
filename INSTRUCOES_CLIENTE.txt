@@ -8,10 +8,10 @@ COMO ABRIR
 
 PASTAS IMPORTANTES
 - %LOCALAPPDATA%\NeivaPlanner\database: guarda clientes e conteúdos.
-- exports: guarda os PDFs exportados.
+- %LOCALAPPDATA%\NeivaPlanner\exports: guarda PDFs, vídeos, downloads e encartes exportados.
 
 BACKUP
-Copie periodicamente %LOCALAPPDATA%\NeivaPlanner\database\content_planner.db para um local seguro.
+Copie periodicamente toda a pasta %LOCALAPPDATA%\NeivaPlanner\database para um local seguro. Contas modernas usam subpastas accounts\<id>.
 
 TRELLO
 Na tela Configurações, clique em Conectar ao Trello, autorize o acesso no navegador e escolha o quadro pelo nome.

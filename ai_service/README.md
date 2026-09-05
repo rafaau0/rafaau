@@ -1,27 +1,47 @@
-# API da IA Neiva
+# API rafaau
 
-Esta pasta é implantada como um serviço separado no Render. A chave `OPENAI_API_KEY`
-fica somente nas variáveis secretas do Render — nunca no aplicativo de quem usa.
+Serviço FastAPI separado do aplicativo desktop. Ele mantém contas, licenças, dispositivos, cotas, assinaturas e o estado temporário do OAuth do Trello. Também intermedeia a seleção de cortes pela OpenAI. Clientes e conteúdos editoriais não são sincronizados aqui: permanecem no SQLite local do desktop.
 
-## Variáveis exigidas no Render
+## Configuração
 
-- `OPENAI_API_KEY`: chave da conta que oferece a IA.
-- `NEIVA_ADMIN_TOKEN`: senha longa e aleatória para criar chaves de clientes.
-- `DATABASE_URL`: URL interna do PostgreSQL criado no Render.
+Variáveis de produção:
+
+- `DATABASE_URL`: PostgreSQL. Sem ela, a API usa `sqlite:///./neiva_ai.db`, adequado somente a desenvolvimento/teste.
+- `OPENAI_API_KEY`: chave usada exclusivamente no servidor.
 - `OPENAI_MODEL`: opcional; padrão `gpt-5-mini`.
-- `TRELLO_API_KEY`: chave pública do Power-Up Neiva Planner.
-- `TRELLO_API_SECRET`: OAuth Secret do Power-Up; nunca deve ir para o desktop ou Git.
-- `PUBLIC_API_URL`: opcional; padrão `https://neiva-ai-api.onrender.com` e usado no callback OAuth.
+- `NEIVA_ADMIN_TOKEN`: bearer secreto das rotas administrativas.
+- `TRELLO_API_KEY` e `TRELLO_API_SECRET`: credenciais OAuth 1.0 do Power-Up.
+- `PUBLIC_API_URL`: base pública do callback Trello; padrão `https://neiva-ai-api.onrender.com`.
+- `ASAAS_API_KEY`, `ASAAS_BASE_URL` e `ASAAS_WEBHOOK_TOKEN`: checkout e autenticação de webhooks.
+- `CHECKOUT_CLAIM_SECRET`: segredo recomendado para claims do checkout; se ausente, o serviço usa o token do webhook ou a chave Asaas.
+- `SITE_URL`: URL HTTPS do site para retornos do checkout. Ausente ou local usa a página de retorno da API.
+- `CORS_ORIGIN_REGEX`: libera origens adicionais controladas, quando necessário.
 
-## Criar uma chave de cliente
+Não coloque esses segredos no Git, no site ou no executável. Em produção, use PostgreSQL; as alterações de esquema atuais são aditivas no startup e ainda não usam Alembic.
 
-Após o deploy, faça um `POST` em `/v1/admin/clients` usando `Authorization: Bearer <NEIVA_ADMIN_TOKEN>` e JSON como `{"name":"Nome do cliente","monthly_limit":30}`. A resposta contém `access_token` apenas uma vez. Entregue-o ao cliente, que o cola em Configurações > IA NEIVA.
+## Executar e testar
 
-## Rotas
+Na raiz do repositório:
 
-- `GET /health`: verifica se a API está no ar.
-- `POST /v1/cuts`: análise de cortes; exige a chave de acesso do cliente.
-- `POST /v1/admin/clients`: cria a chave de um cliente; exige a senha de administrador.
-- `POST /v1/integrations/trello/start`: inicia OAuth 1.0 para um aplicativo autenticado.
-- `GET /v1/integrations/trello/callback`: callback HTTPS chamado pelo Trello.
-- `GET /v1/integrations/trello/status/{connection_id}`: entrega o resultado somente à licença que iniciou o fluxo.
+```powershell
+.\.venv\Scripts\python.exe -m uvicorn ai_service.app.main:app --reload
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+```
+
+## Rotas principais
+
+- `GET /health`
+- `POST /v1/auth/register`, `/v1/auth/sign-in`, `/v1/auth/app-login` e `/v1/auth/logout`
+- `GET /v1/auth/session`
+- `GET /v1/billing/plans`
+- `POST /v1/billing/checkout` — requer bearer de sessão web e `Idempotency-Key`
+- `GET /v1/billing/orders/{public_id}`
+- `POST /v1/webhooks/asaas`
+- `POST /v1/cuts`
+- `POST /v1/integrations/trello/start`
+- `GET /v1/integrations/trello/callback`
+- `GET /v1/integrations/trello/status/{connection_id}`
+- `POST /v1/admin/clients` — retorna um `activation_code` de uso único, não um token permanente
+- `POST /v1/admin/billing/subscriptions`
+
+O webhook, e não o retorno do navegador, é a fonte de ativação do pagamento. Antes de liberar produção, valide o ciclo completo em Asaas sandbox e a concorrência em PostgreSQL.

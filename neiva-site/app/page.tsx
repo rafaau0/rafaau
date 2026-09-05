@@ -11,7 +11,7 @@ const features = [
   {
     number: '02',
     title: 'Clientes e demandas',
-    text: 'Centralize briefing, responsável, status e data de cada conteúdo em uma rotina organizada.',
+    text: 'Centralize briefing, status e data de cada conteúdo em uma rotina organizada.',
     color: 'bg-[#EEF5FF] text-[#2563EB]',
   },
   {
@@ -25,30 +25,6 @@ const features = [
     title: 'Vídeo e IA rafaau',
     text: 'Transcreva vídeos, encontre trechos promissores e transforme material longo em novas ideias.',
     color: 'bg-[#FFF6E8] text-[#C77A08]',
-  },
-];
-
-const testimonials = [
-  {
-    initials: 'MC',
-    name: 'Marina Costa',
-    role: 'Social media freelancer',
-    quote:
-      'Parei de procurar briefing no WhatsApp. Hoje sei o que entregar para cada cliente antes da semana começar.',
-  },
-  {
-    initials: 'RL',
-    name: 'Rafael Lima',
-    role: 'Criador de conteúdo',
-    quote:
-      'O calendário e os cortes por IA me devolveram horas que eu gastava organizando ideia solta.',
-  },
-  {
-    initials: 'BS',
-    name: 'Bianca Souza',
-    role: 'Pequena agência',
-    quote:
-      'Finalmente o time e os clientes enxergam o mesmo status sem uma reunião para explicar tudo.',
   },
 ];
 
@@ -72,7 +48,6 @@ const plans = [
     code: 'free',
     name: 'Grátis',
     price: '0',
-    annual: '',
     credits: 'Não incluída',
     use: 'Para conhecer o planejamento editorial.',
     features: ['1 cliente e 15 conteúdos por mês', '1 PDF por mês', 'Calendário e dashboard', 'Sem Trello, vídeo ou encartes'],
@@ -81,7 +56,6 @@ const plans = [
     code: 'essencial',
     name: 'Essencial',
     price: '49,90',
-    annual: '39,90',
     credits: '20',
     use: 'Para quem analisa alguns vídeos por mês.',
     features: ['Até 10 clientes', 'Conteúdos e PDFs ilimitados', 'Trello, vídeos e encartes', 'Uso em até 2 computadores'],
@@ -90,7 +64,6 @@ const plans = [
     code: 'pro',
     name: 'Pro',
     price: '89,90',
-    annual: '69,90',
     credits: '80',
     use: 'Para quem produz para vários clientes ou publica toda semana.',
     features: ['Clientes e conteúdos ilimitados', 'Trello, vídeos e encartes', 'Maior volume de IA', 'Uso em até 3 computadores'],
@@ -111,8 +84,8 @@ const faqs = [
     'O plano Grátis permite 1 computador, o Essencial permite 2 e o Pro permite até 3 computadores.',
   ],
   [
-    'Funciona para equipes maiores?',
-    'Sim. O rafaau organiza clientes, demandas e status para uma operação compartilhada. Para mais dispositivos ou uma necessidade específica, fale com a gente para montar a estrutura ideal.',
+    'Os dados são compartilhados entre computadores?',
+    'Não. Cada conta pode ser usada no número de computadores permitido pelo plano, mas os dados de planejamento ficam armazenados localmente em cada computador e não são sincronizados.',
   ],
 ];
 
@@ -129,10 +102,9 @@ function Logo({ compact = false }: { compact?: boolean }) {
   );
 }
 
-function ProductVideoPlaceholder() {
+function ProductPreview() {
   return (
     <div className="relative overflow-hidden rounded-2xl border border-[#DDE1E7] bg-[#17191F] p-3 shadow-2xl shadow-slate-900/10">
-      {/* Substitua este bloco por <video autoPlay muted loop playsInline src="/demo-rafaau.mp4" /> ou por um GIF otimizado. */}
       <div className="absolute -left-10 top-10 size-48 rounded-full bg-[#FF263D]/20 blur-3xl" />
       <div className="relative overflow-hidden rounded-xl border border-white/10 bg-[#20232B]">
         <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
@@ -142,7 +114,7 @@ function ProductVideoPlaceholder() {
             <i className="size-2 rounded-full bg-[#48B887]" />
           </div>
           <span className="text-[10px] font-bold tracking-[.16em] text-slate-400">
-            DEMO EM VÍDEO · 15–20S
+            VISÃO GERAL DO APLICATIVO
           </span>
         </div>
         <div className="grid gap-4 p-5 sm:grid-cols-[124px_1fr]">
@@ -207,7 +179,7 @@ function ProductVideoPlaceholder() {
         <span className="inline-flex size-7 items-center justify-center rounded-full bg-[#FF263D] text-white">
           ▶
         </span>
-        <span>Placeholder para vídeo demonstrativo em loop</span>
+        <span>Prévia ilustrativa da interface</span>
       </div>
     </div>
   );
@@ -281,8 +253,7 @@ export default function Home() {
             </a>
           </div>
           <p className="mt-4 text-sm font-medium text-[#68707D]">
-            <b className="text-[#17191F]">7 dias de teste grátis.</b> Sem
-            cobrança durante o período; cancele quando quiser.
+            Comece no plano Grátis e faça upgrade quando precisar.
           </p>
           <div className="mt-5 flex flex-wrap gap-x-6 gap-y-2 text-sm font-medium text-[#68707D]">
             <span>✓ Sem organização manual</span>
@@ -291,7 +262,7 @@ export default function Home() {
         </div>
         <div className="relative mx-auto w-full max-w-xl">
           <div className="absolute -left-8 top-14 h-52 w-52 rounded-full bg-[#FF263D]/10 blur-3xl" />
-          <ProductVideoPlaceholder />
+          <ProductPreview />
         </div>
       </section>
 
@@ -335,50 +306,6 @@ export default function Home() {
               </p>
             </article>
           ))}
-        </div>
-      </section>
-
-      <section className="border-y border-[#DDE1E7] bg-white px-6 py-20">
-        <div className="mx-auto max-w-7xl">
-          <div className="flex flex-col justify-between gap-5 md:flex-row md:items-end">
-            <div>
-              <p className="text-xs font-bold tracking-[.16em] text-[#FF263D]">
-                PROVA SOCIAL
-              </p>
-              <h2 className="mt-3 text-3xl font-black tracking-[-.04em] sm:text-4xl">
-                Feito para quem vive da entrega de conteúdo.
-              </h2>
-            </div>
-            <p className="rounded-full bg-[#EAF7F1] px-4 py-2 text-sm font-bold text-[#168A5B]">
-              <span className="text-lg">XXX+</span> criadores organizando
-              conteúdo
-            </p>
-          </div>
-          <div className="mt-10 grid gap-4 md:grid-cols-3">
-            {testimonials.map((item) => (
-              <figure
-                key={item.name}
-                className="rounded-2xl border border-[#DDE1E7] bg-[#F7F8FA] p-6"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="inline-flex size-11 items-center justify-center rounded-full bg-[#17191F] text-sm font-black text-white">
-                    {item.initials}
-                  </span>
-                  <figcaption>
-                    <b className="block">{item.name}</b>
-                    <span className="text-sm text-[#68707D]">{item.role}</span>
-                  </figcaption>
-                </div>
-                <blockquote className="mt-6 text-base leading-7 text-[#4E5560]">
-                  “{item.quote}”
-                </blockquote>
-              </figure>
-            ))}
-          </div>
-          <p className="mt-5 text-xs text-[#68707D]">
-            Depoimentos ilustrativos — substitua pelos resultados reais dos seus
-            clientes.
-          </p>
         </div>
       </section>
 
@@ -450,7 +377,7 @@ export default function Home() {
                 </small>
               </p>
               <p className="mt-2 text-sm text-[#68707D]">
-                {plan.annual ? `R$ ${plan.annual}/mês no plano anual` : 'Grátis para sempre'}
+                {plan.code === 'free' ? 'Grátis para sempre' : 'Cobrança mensal; cancele quando quiser'}
               </p>
               <div
                 className={`mt-6 rounded-xl p-4 ${index === 1 ? 'bg-[#FFF0F2]' : 'bg-[#F0F2F5]'}`}
@@ -553,19 +480,16 @@ export default function Home() {
             <h2 className="mt-4 text-4xl font-black tracking-[-.04em] sm:text-6xl">
               Seu conteúdo merece um processo que funciona todos os dias.
             </h2>
-            <blockquote className="mt-7 border-l-2 border-white/50 pl-4 text-lg leading-7 text-red-50">
-              “Hoje sei o que entregar para cada cliente antes da semana
-              começar.”{' '}
-              <cite className="mt-2 block text-sm not-italic text-red-100">
-                — Marina Costa, social media freelancer
-              </cite>
-            </blockquote>
+            <p className="mt-7 max-w-2xl text-lg leading-7 text-red-50">
+              Planeje conteúdos, acompanhe o andamento e concentre cada cliente
+              em um fluxo local e organizado.
+            </p>
           </div>
           <div className="rounded-2xl bg-white/10 p-7 backdrop-blur-sm">
-            <p className="text-lg font-bold">Comece com 7 dias grátis.</p>
+            <p className="text-lg font-bold">Comece pelo plano Grátis.</p>
             <p className="mt-2 text-sm leading-6 text-red-100">
-              Conheça o rafaau sem cobrança durante o teste e cancele quando
-              quiser.
+              Conheça o planejamento sem cobrança e escolha um plano pago
+              quando precisar de mais recursos.
             </p>
             <a
               href="#planos"

@@ -10,6 +10,7 @@ from pathlib import Path
 import requests
 
 from .account_login import API_URL
+from .account_sessions import account_secret_key
 from .secrets import get_secret
 
 
@@ -51,7 +52,7 @@ def get_app_key() -> str:
         except (OSError, ValueError, TypeError):
             pass
     # Compatibilidade com instalações que já tinham a chave configurada manualmente.
-    return get_secret("TRELLO_API_KEY").strip()
+    return get_secret(account_secret_key("TRELLO_API_KEY")).strip()
 
 
 def authorize(timeout: int = 300) -> tuple[str, str]:

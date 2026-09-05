@@ -32,7 +32,7 @@ O módulo é independente e já inclui a automação necessária. Não requer a 
 ## Executar em desenvolvimento
 
 ```powershell
-cd "C:\Users\rafaa\Documents\PROJETOS\Neiva-Planner-main"
+cd "<pasta-do-repositorio>"
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
@@ -42,7 +42,7 @@ python -m content_planner
 
 ## Configuração e segurança
 
-- Para **Estúdio de Vídeo > Cortes** com IA, configure em **Configurações > IA NEIVA** a URL da API Neiva e a chave de acesso fornecida ao cliente. A chave OpenAI da empresa fica exclusivamente no servidor e nunca é distribuída no aplicativo.
+- Para usar recursos vinculados ao plano, crie uma conta e entre pelo aplicativo. A URL da API é definida pelo produto; a chave OpenAI permanece exclusivamente no servidor.
 - A transcrição é local. Quando a opção **Usar IA OpenAI** estiver ativa, somente a transcrição com timestamps é enviada à API para selecionar os cortes; esse uso pode gerar custo.
 - O executável de produção inclui FFmpeg e FFprobe. Em desenvolvimento, execute `powershell -ExecutionPolicy Bypass -File scripts\prepare_ffmpeg.ps1` ou disponibilize ambos no `PATH`.
 - Para o módulo de encartes, instale o Adobe Photoshop. O projeto já contém toda a automação de PSD necessária.
@@ -61,7 +61,7 @@ Os vídeos baixados ficam em `exports/downloads` e os resultados das análises e
 .\.venv\Scripts\python.exe -m PyInstaller --noconfirm --clean NeivaPlanner.spec
 ```
 
-O arquivo final será `dist\NeivaPlanner_v1.exe`. No executável, o banco é salvo em `%LOCALAPPDATA%\NeivaPlanner\database`; bancos de versões portáteis anteriores são migrados automaticamente. Os arquivos exportados continuam na pasta `exports` ao lado do executável.
+O arquivo final será `dist\NeivaPlanner_v1.exe`. No executável, bancos ficam em `%LOCALAPPDATA%\NeivaPlanner\database` e exportações em `%LOCALAPPDATA%\NeivaPlanner\exports`. Dados legados não são associados automaticamente a uma conta moderna; qualquer migração precisa confirmar o titular.
 
 Antes de distribuir uma versão, execute os testes, gere o executável em uma pasta nova e valide manualmente: abertura do aplicativo, criação de cliente/post, exportação de PDF, conexão Trello e um vídeo curto. Assine o executável antes de distribuição pública.
 
@@ -90,4 +90,4 @@ Cada card recebe um identificador interno do post local. Caso a conexão caia ap
 
 ## Backup
 
-Em desenvolvimento, faça cópias periódicas de `database\content_planner.db`. No executável, copie `%LOCALAPPDATA%\NeivaPlanner\database\content_planner.db`. Esse arquivo contém clientes e conteúdos; as credenciais ficam separadamente no cofre do Windows.
+Em desenvolvimento, faça cópias periódicas de `database\content_planner.db` e de `database\accounts`. No executável, copie `%LOCALAPPDATA%\NeivaPlanner\database`, incluindo `accounts\<id>\content_planner.db`. Esses arquivos contêm clientes e conteúdos; credenciais ficam separadamente no cofre do Windows.

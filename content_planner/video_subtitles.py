@@ -5,6 +5,7 @@ import json
 import logging
 import subprocess
 import tempfile
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from .ffmpeg_tools import FFmpegNotFoundError, binary
@@ -53,6 +54,8 @@ class VideoProject:
     motion_smoothing_enabled: bool = True
     motion_segments: list[tuple[float, float]] = field(default_factory=list)
     caption_fixed: bool = True
+    video_format: str = "Original"
+    fit_mode: str = "Preencher"
 
 
 def _ffmpeg() -> str:
@@ -67,10 +70,13 @@ def probe(path: Path) -> tuple[float, int, int]:
         ffprobe = binary("ffprobe")
     except FFmpegNotFoundError as exc:
         raise VideoError(str(exc)) from exc
-    result = subprocess.run(
-        [ffprobe, "-v", "error", "-select_streams", "v:0", "-show_entries", "format=duration:stream=width,height", "-of", "json", str(path)],
-        capture_output=True, text=True, check=False, timeout=PROBE_TIMEOUT_SECONDS,
-    )
+    try:
+        result = subprocess.run(
+            [ffprobe, "-v", "error", "-select_streams", "v:0", "-show_entries", "format=duration:stream=width,height", "-of", "json", str(path)],
+            capture_output=True, text=True, check=False, timeout=PROBE_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise VideoError("A leitura do vídeo excedeu o tempo limite de 60 segundos.") from exc
     if result.returncode:
         raise VideoError(result.stderr.strip() or "Não foi possível ler este vídeo.")
     data = json.loads(result.stdout)
@@ -84,9 +90,11 @@ def probe(path: Path) -> tuple[float, int, int]:
 def probe_fps(path: Path) -> float:
     try:
         ffprobe = binary("ffprobe")
-        result = subprocess.run([ffprobe,"-v","error","-select_streams","v:0","-show_entries","stream=avg_frame_rate","-of","default=noprint_wrappers=1:nokey=1",str(path)],capture_output=True,text=True,check=False)
+        result = subprocess.run([ffprobe,"-v","error","-select_streams","v:0","-show_entries","stream=avg_frame_rate","-of","default=noprint_wrappers=1:nokey=1",str(path)],capture_output=True,text=True,check=False,timeout=PROBE_TIMEOUT_SECONDS)
         top,bottom=result.stdout.strip().split("/")
         return max(1.0,float(top)/float(bottom))
+    except subprocess.TimeoutExpired as exc:
+        raise VideoError("A leitura da taxa de quadros excedeu o tempo limite de 60 segundos.") from exc
     except Exception:
         return 25.0
 
@@ -136,20 +144,24 @@ def transcribe(video: Path, model_name: str, max_words: int, progress=None) -> l
             raise VideoError(f"Falha durante a transcrição: {exc}") from exc
     result: list[Subtitle] = []
     for subtitle in original:
+        if subtitle.words:
+            for start in range(0, len(subtitle.words), max_words):
+                selected = subtitle.words[start:start + max_words]
+                result.append(Subtitle(selected[0].start, selected[-1].end, " ".join(word.text for word in selected), selected))
+            continue
         words = subtitle.text.split()
         for start in range(0, len(words), max_words):
             part = words[start:start + max_words]
             ratio_start, ratio_end = start / len(words), min(len(words), start + max_words) / len(words)
             duration = subtitle.end - subtitle.start
-            selected=subtitles_words=subtitle.words[start:start + max_words]
-            result.append(Subtitle(subtitle.start + duration * ratio_start, subtitle.start + duration * ratio_end, " ".join(part), selected))
+            result.append(Subtitle(subtitle.start + duration * ratio_start, subtitle.start + duration * ratio_end, " ".join(part)))
     if progress: progress("Legendas prontas para revisão.", 100)
     return result
 
 
 def render(project: VideoProject, output: Path, video_format: str, fit_mode: str, progress=None, burn_subtitles: bool = True) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
-    temporary_srt = Path(tempfile.gettempdir()) / f"neiva_{output.stem}_{id(project)}.ass"
+    temporary_srt = Path(tempfile.gettempdir()) / f"neiva_{uuid.uuid4().hex}.ass"
     style = getattr(project, "caption_style", "Viral")
     position = getattr(project, "caption_position", "Centro")
     font = getattr(project, "caption_font", "Arial")
@@ -176,7 +188,8 @@ def render(project: VideoProject, output: Path, video_format: str, fit_mode: str
         filters = "scale=1080:1080:force_original_aspect_ratio=decrease,pad=1080:1080:(ow-iw)/2:(oh-ih)/2:black"
     elif video_format == "Horizontal":
         filters = "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black"
-    if getattr(project, "dynamic_zoom_enabled", False) or getattr(project, "video_motion_enabled", False):
+    dynamic_enabled = getattr(project, "dynamic_edit_enabled", False)
+    if dynamic_enabled and (getattr(project, "dynamic_zoom_enabled", False) or getattr(project, "video_motion_enabled", False)):
         _, width, height = probe(project.video_path)
         fps = probe_fps(project.video_path)
         if video_format == "Vertical 9:16": width, height = 1080, 1920

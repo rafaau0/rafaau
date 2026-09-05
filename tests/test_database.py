@@ -38,6 +38,14 @@ class DatabaseTests(unittest.TestCase):
         self.assertEqual(self.database.get_setting("TRELLO_BOARD_ID"), "board-123")
         self.assertEqual(self.database.get_setting("UNKNOWN", "fallback"), "fallback")
 
+    def test_repeated_create_operation_returns_the_original_record(self) -> None:
+        operation = "same-ui-submit"
+        payload = Client(None, "Outro cliente", "", "", "", "", "", operation)
+        first = self.database.create_client(payload)
+        second = self.database.create_client(payload)
+        self.assertEqual(first, second)
+        self.assertEqual(len([item for item in self.database.search_clients() if item.operation_id == operation]), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

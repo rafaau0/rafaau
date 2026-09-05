@@ -53,6 +53,16 @@ def current_token() -> str:
     return get_secret("NEIVA_AI_CLIENT_TOKEN")
 
 
+def token_for_account(account_id: str) -> str:
+    return get_secret(_token_key(str(account_id)))
+
+
+def account_secret_key(key: str, account_id: str | None = None) -> str:
+    """Cria namespace de segredo por conta; licenças legadas mantêm a chave antiga."""
+    account = current_account() if account_id is None else next((item for item in saved_accounts() if item.account_id == str(account_id)), None)
+    return f"{key}_ACCOUNT_{account.account_id}" if account else key
+
+
 def save_account(account_data: dict, token: str) -> SavedAccount:
     email = str(account_data.get("email", "")).strip().lower()
     account = SavedAccount(

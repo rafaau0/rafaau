@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import calendar
 import html
-import sys
 from collections import defaultdict
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 from reportlab.lib import colors
@@ -15,10 +14,9 @@ from reportlab.lib.units import cm
 from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from .database import Client, Post
+from .paths import EXPORTS_DIR
 
 
-ROOT_DIR = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent.parent
-EXPORTS_DIR = ROOT_DIR / "exports"
 MONTH_NAMES = [
     "Janeiro",
     "Fevereiro",
@@ -104,10 +102,12 @@ class PDFGenerator:
         )
 
     def export_month(self, client: Client, posts: list[Post], year: int, month: int) -> Path:
-        filename = f"calendario_{self._slug(client.name)}_{year}_{month:02d}.pdf"
+        identity = client.id if client.id is not None else "sem_id"
+        filename = f"calendario_{self._slug(client.name)}_{identity}_{year}_{month:02d}_{datetime.now():%Y%m%d_%H%M%S_%f}.pdf"
         output_path = self.output_dir / filename
+        temporary_path = output_path.with_suffix(".tmp.pdf")
         document = SimpleDocTemplate(
-            str(output_path),
+            str(temporary_path),
             pagesize=landscape(A4),
             rightMargin=0.75 * cm,
             leftMargin=0.75 * cm,
@@ -123,8 +123,16 @@ class PDFGenerator:
             Paragraph("Lista de Conteúdos", self.styles["Title"]),
             Spacer(1, 0.25 * cm),
             self._posts_table(posts),
+            PageBreak(),
+            Paragraph("Detalhes dos Conteúdos", self.styles["Title"]),
+            Spacer(1, 0.25 * cm),
+            *self._post_details(posts),
         ]
-        document.build(story, onFirstPage=self._footer, onLaterPages=self._footer)
+        try:
+            document.build(story, onFirstPage=self._footer, onLaterPages=self._footer)
+            temporary_path.replace(output_path)
+        finally:
+            temporary_path.unlink(missing_ok=True)
         return output_path
 
     def _cover(self, client: Client, year: int, month: int) -> Table:
@@ -209,20 +217,20 @@ class PDFGenerator:
         return table
 
     def _posts_table(self, posts: list[Post]) -> Table:
-        header = ["Data", "Tipo", "Plataforma", "Título", "Status"]
+        header = [Paragraph(f"<b>{value}</b>", self.styles["SmallMuted"]) for value in ["Data", "Tipo", "Plataforma", "Título", "Status"]]
         data = [header]
         for post in posts:
             data.append(
                 [
-                    post.post_date,
-                    self._escape(post.content_type),
-                    self._escape(post.platform),
-                    self._escape(post.title),
-                    self._escape(post.status),
+                    Paragraph(self._escape(post.post_date), self.styles["SmallMuted"]),
+                    Paragraph(self._escape(post.content_type), self.styles["SmallMuted"]),
+                    Paragraph(self._escape(post.platform), self.styles["SmallMuted"]),
+                    Paragraph(self._escape(post.title), self.styles["SmallMuted"]),
+                    Paragraph(self._escape(post.status), self.styles["SmallMuted"]),
                 ]
             )
         if len(data) == 1:
-            data.append(["-", "-", "-", "Nenhum conteúdo cadastrado para este mês.", "-"])
+            data.append([Paragraph(value, self.styles["SmallMuted"]) for value in ["-", "-", "-", "Nenhum conteúdo cadastrado para este mês.", "-"]])
 
         table = Table(data, colWidths=[3 * cm, 3 * cm, 3 * cm, 12 * cm, 4 * cm], repeatRows=1)
         style = [
@@ -242,6 +250,22 @@ class PDFGenerator:
             style.append(("FONTNAME", (4, row_index), (4, row_index), "Helvetica-Bold"))
         table.setStyle(TableStyle(style))
         return table
+
+    def _post_details(self, posts: list[Post]) -> list:
+        if not posts:
+            return [Paragraph("Nenhum conteúdo cadastrado para este mês.", self.styles["BodyText"])]
+        blocks: list = []
+        for post in posts:
+            details = [
+                Paragraph(f"<b>{self._escape(post.post_date)} · {self._escape(post.title)}</b>", self.styles["Heading3"]),
+                Paragraph(f"<b>Tipo:</b> {self._escape(post.content_type)} &nbsp;&nbsp; <b>Plataforma:</b> {self._escape(post.platform)} &nbsp;&nbsp; <b>Status:</b> {self._escape(post.status)}", self.styles["BodyText"]),
+                Paragraph(f"<b>Descrição:</b> {self._escape(post.description) or '—'}", self.styles["BodyText"]),
+                Paragraph(f"<b>Legenda:</b> {self._escape(post.caption) or '—'}", self.styles["BodyText"]),
+                Paragraph(f"<b>CTA:</b> {self._escape(post.cta) or '—'}", self.styles["BodyText"]),
+                Spacer(1, 0.25 * cm),
+            ]
+            blocks.extend(details)
+        return blocks
 
     @staticmethod
     def _footer(canvas, doc) -> None:
