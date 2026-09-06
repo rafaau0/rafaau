@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import unittest
-from datetime import datetime, timedelta, timezone
 from http.cookies import SimpleCookie
 from unittest.mock import patch
 
@@ -12,23 +11,15 @@ from sqlalchemy.orm import Session
 from ai_service.app.main import (
     ADMIN_COOKIE_NAME,
     Account,
-    AccountSession,
-    ActivationCode,
     AdminAuditLog,
     AdminIdentity,
     AdminLoginRequest,
-    AdminPurgeTestDataRequest,
     AdminSession,
     AdminUser,
     AdminClientUpdateRequest,
     Base,
     Client,
-    CheckoutOrder,
     DeviceToken,
-    MonthlyUsage,
-    ProcessedWebhook,
-    Subscription,
-    TrelloOAuthRequest,
     admin_csrf_token,
     admin_customer_detail,
     admin_sign_in,
@@ -36,8 +27,6 @@ from ai_service.app.main import (
     current_admin,
     current_admin_write,
     password_hash,
-    purge_admin_test_data,
-    purge_admin_test_data_page,
     revoke_admin_device,
     token_hash,
     update_admin_customer,
@@ -150,115 +139,6 @@ class AdminServiceTests(unittest.TestCase):
             self.assertIsNone(session.get(DeviceToken, device.id))
             actions = [entry.action for entry in session.scalars(select(AdminAuditLog).order_by(AdminAuditLog.id)).all()]
             self.assertEqual(actions, ["customer.updated", "device.revoked"])
-
-    def test_temporary_purge_removes_customer_data_and_preserves_admin_data(self) -> None:
-        with Session(self.engine) as session:
-            admin_user = AdminUser(email="owner@example.com", password_hash="hash")
-            account = Account(name="Conta de teste", email="teste@example.com", password_hash="hash")
-            session.add_all([admin_user, account])
-            session.flush()
-            client = Client(name="Cliente de teste", token_hash="client-token", account_id=account.id, plan_code="free")
-            session.add(client)
-            session.flush()
-            session.add_all([
-                AccountSession(
-                    account_id=account.id,
-                    token_hash="account-session-token",
-                    expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
-                ),
-                ActivationCode(client_id=client.id, code_hash="activation-code-hash"),
-                DeviceToken(client_id=client.id, token_hash="device-token", device_id="test-device-123456"),
-                MonthlyUsage(client_id=client.id, period="2026-09", requests_count=3),
-                Subscription(
-                    client_id=client.id,
-                    provider_subscription_id="sub_test_123",
-                    plan_code="essencial",
-                ),
-                CheckoutOrder(
-                    public_id="order-test-123",
-                    claim_token_hash="claim-token-hash",
-                    customer_name="Conta de teste",
-                    customer_email="teste@example.com",
-                    account_id=account.id,
-                    plan_code="essencial",
-                    client_id=client.id,
-                ),
-                TrelloOAuthRequest(
-                    public_id="trello-test-123",
-                    client_id=client.id,
-                    request_token_hash="trello-request-token",
-                    request_secret_encrypted="encrypted-secret",
-                    expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
-                ),
-                ProcessedWebhook(provider="asaas", event_id="evt-already-processed"),
-            ])
-            admin_session = AdminSession(
-                admin_user_id=admin_user.id,
-                token_hash=token_hash("admin-session"),
-                expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
-            )
-            session.add(admin_session)
-            session.commit()
-
-            result = purge_admin_test_data(
-                AdminPurgeTestDataRequest(
-                    confirmation="LIMPAR DADOS DE TESTE",
-                    expected_customers=1,
-                    reason="Remoção dos cadastros criados durante o QA",
-                ),
-                AdminIdentity(admin_user, "raw"),
-                session,
-            )
-
-            self.assertTrue(result["ok"])
-            self.assertEqual(result["deleted"]["clients"], 1)
-            self.assertIsNone(session.scalar(select(Account)))
-            self.assertIsNone(session.scalar(select(Client)))
-            self.assertIsNone(session.scalar(select(DeviceToken)))
-            self.assertIsNone(session.scalar(select(AccountSession)))
-            self.assertIsNone(session.scalar(select(ActivationCode)))
-            self.assertIsNone(session.scalar(select(MonthlyUsage)))
-            self.assertIsNone(session.scalar(select(Subscription)))
-            self.assertIsNone(session.scalar(select(CheckoutOrder)))
-            self.assertIsNone(session.scalar(select(TrelloOAuthRequest)))
-            self.assertIsNotNone(session.get(AdminUser, admin_user.id))
-            self.assertIsNotNone(session.get(AdminSession, admin_session.id))
-            self.assertIsNotNone(session.scalar(select(ProcessedWebhook)))
-            audit = session.scalar(select(AdminAuditLog).where(AdminAuditLog.action == "test_data.purged"))
-            self.assertIsNotNone(audit)
-
-    def test_temporary_purge_rejects_stale_customer_count(self) -> None:
-        with Session(self.engine) as session:
-            admin_user = AdminUser(email="owner@example.com", password_hash="hash")
-            account = Account(name="Conta de teste", email="teste@example.com", password_hash="hash")
-            session.add_all([admin_user, account])
-            session.flush()
-            session.add(Client(name="Cliente de teste", token_hash="client-token", account_id=account.id, plan_code="free"))
-            session.commit()
-
-            with self.assertRaises(HTTPException) as raised:
-                purge_admin_test_data(
-                    AdminPurgeTestDataRequest(
-                        confirmation="LIMPAR DADOS DE TESTE",
-                        expected_customers=0,
-                        reason="Limpeza solicitada",
-                    ),
-                    AdminIdentity(admin_user, "raw"),
-                    session,
-                )
-
-            self.assertEqual(raised.exception.status_code, 409)
-            self.assertIsNotNone(session.scalar(select(Account)))
-            self.assertIsNotNone(session.scalar(select(Client)))
-
-    def test_temporary_purge_page_has_strict_browser_protections(self) -> None:
-        response = purge_admin_test_data_page()
-        document = response.body.decode("utf-8")
-
-        self.assertIn("LIMPAR DADOS DE TESTE", document)
-        self.assertIn("Content-Security-Policy", response.headers)
-        self.assertIn("frame-ancestors 'none'", response.headers["Content-Security-Policy"])
-        self.assertEqual(response.headers["Cache-Control"], "no-store")
 
 
 if __name__ == "__main__":
