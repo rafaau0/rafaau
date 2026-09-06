@@ -10,17 +10,18 @@ import os
 import re
 import secrets
 from base64 import urlsafe_b64decode, urlsafe_b64encode
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 import requests
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from fastapi import Depends, FastAPI, Header, HTTPException, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field, field_validator
 from requests_oauthlib import OAuth1Session
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint, create_engine, inspect, select, text, update
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint, and_, create_engine, func, inspect, or_, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
@@ -170,6 +171,36 @@ class TrelloOAuthRequest(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
+class AdminUser(Base):
+    """Operador do painel administrativo; separado das contas de clientes."""
+    __tablename__ = "admin_users"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    email: Mapped[str] = mapped_column(String(254), unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String(512))
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class AdminSession(Base):
+    __tablename__ = "admin_sessions"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    admin_user_id: Mapped[int] = mapped_column(ForeignKey("admin_users.id"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class AdminAuditLog(Base):
+    __tablename__ = "admin_audit_logs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    admin_user_id: Mapped[int] = mapped_column(ForeignKey("admin_users.id"), index=True)
+    action: Mapped[str] = mapped_column(String(80), index=True)
+    target_type: Mapped[str] = mapped_column(String(50))
+    target_id: Mapped[str] = mapped_column(String(120), index=True)
+    details_json: Mapped[str] = mapped_column(String(4000), default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
+
+
 class SubtitleInput(BaseModel):
     start: float = Field(ge=0)
     end: float = Field(gt=0)
@@ -245,6 +276,19 @@ class AccountLoginRequest(BaseModel):
 
 class AppLoginRequest(AccountLoginRequest):
     device_id: str = Field(min_length=16, max_length=120)
+
+
+class AdminLoginRequest(AccountLoginRequest):
+    pass
+
+
+class AdminClientUpdateRequest(BaseModel):
+    active: bool | None = None
+    account_active: bool | None = None
+    plan_code: str | None = None
+    monthly_limit: int | None = Field(default=None, ge=0, le=10000)
+    device_limit: int | None = Field(default=None, ge=1, le=20)
+    reason: str = Field(min_length=3, max_length=500)
 
 
 PLANS = {
@@ -431,6 +475,101 @@ def require_admin(credentials: HTTPAuthorizationCredentials | None = Depends(bea
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Não autorizado.")
 
 
+ADMIN_COOKIE_NAME = "rafaau_admin_session"
+ADMIN_SESSION_HOURS = 2
+
+
+@dataclass(frozen=True)
+class AdminIdentity:
+    user: AdminUser
+    raw_token: str
+
+
+def admin_session_secret() -> str:
+    value = (os.getenv("ADMIN_SESSION_SECRET") or os.getenv("NEIVA_ADMIN_TOKEN") or "").strip()
+    if not value:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="A sessão administrativa não está configurada.")
+    return value
+
+
+def admin_csrf_token(raw_token: str) -> str:
+    return hmac.new(admin_session_secret().encode("utf-8"), raw_token.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def admin_cookie_secure() -> bool:
+    configured = os.getenv("ADMIN_COOKIE_SECURE")
+    if configured is not None:
+        return configured.strip().lower() not in {"0", "false", "no"}
+    return not (os.getenv("PUBLIC_API_URL", "").startswith("http://localhost") or os.getenv("PUBLIC_API_URL", "").startswith("http://127.0.0.1"))
+
+
+def set_admin_cookie(response: Response, raw_token: str) -> None:
+    response.set_cookie(
+        ADMIN_COOKIE_NAME,
+        raw_token,
+        max_age=ADMIN_SESSION_HOURS * 3600,
+        httponly=True,
+        secure=admin_cookie_secure(),
+        samesite="none" if admin_cookie_secure() else "lax",
+        path="/",
+    )
+
+
+def clear_admin_cookie(response: Response) -> None:
+    response.delete_cookie(
+        ADMIN_COOKIE_NAME,
+        httponly=True,
+        secure=admin_cookie_secure(),
+        samesite="none" if admin_cookie_secure() else "lax",
+        path="/",
+    )
+
+
+def current_admin(request: Request, session: Session = Depends(db_session)) -> AdminIdentity:
+    raw_token = request.cookies.get(ADMIN_COOKIE_NAME, "")
+    saved = session.scalar(select(AdminSession).where(AdminSession.token_hash == token_hash(raw_token))) if raw_token else None
+    if not saved:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sessão administrativa ausente.")
+    expires_at = saved.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at <= datetime.now(timezone.utc):
+        session.delete(saved)
+        session.commit()
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sua sessão administrativa expirou.")
+    user = session.get(AdminUser, saved.admin_user_id)
+    if not user or not user.active:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Administrador indisponível.")
+    return AdminIdentity(user=user, raw_token=raw_token)
+
+
+def current_admin_write(
+    x_admin_csrf: str | None = Header(default=None, alias="X-Admin-CSRF"),
+    admin: AdminIdentity = Depends(current_admin),
+) -> AdminIdentity:
+    expected = admin_csrf_token(admin.raw_token)
+    if not x_admin_csrf or not hmac.compare_digest(x_admin_csrf, expected):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Confirmação de segurança inválida. Atualize a página.")
+    return admin
+
+
+def add_admin_audit(
+    session: Session,
+    admin: AdminIdentity,
+    action: str,
+    target_type: str,
+    target_id: str | int,
+    details: dict,
+) -> None:
+    session.add(AdminAuditLog(
+        admin_user_id=admin.user.id,
+        action=action,
+        target_type=target_type,
+        target_id=str(target_id),
+        details_json=json.dumps(details, ensure_ascii=False, sort_keys=True)[:4000],
+    ))
+
+
 def current_client(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme), session: Session = Depends(db_session)
 ) -> Client:
@@ -596,8 +735,9 @@ app.add_middleware(
     # prévia da Cloudflare podem acessar a API de staging sem abrir a API
     # de produção para origens temporárias.
     allow_origin_regex=os.getenv("CORS_ORIGIN_REGEX") or None,
-    allow_methods=["POST", "GET"],
+    allow_methods=["POST", "GET", "PATCH", "DELETE"],
     allow_headers=["*"],
+    allow_credentials=True,
 )
 
 
@@ -620,6 +760,23 @@ def initialize_database() -> None:
                 if column_name not in existing:
                     connection.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}"))
         connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_checkout_orders_idempotency_key ON checkout_orders (idempotency_key)"))
+
+    admin_email = os.getenv("NEIVA_ADMIN_EMAIL", "").strip()
+    admin_password = os.getenv("NEIVA_ADMIN_PASSWORD", "")
+    if bool(admin_email) != bool(admin_password):
+        raise RuntimeError("Configure NEIVA_ADMIN_EMAIL e NEIVA_ADMIN_PASSWORD juntos.")
+    if admin_email:
+        try:
+            admin_email = normalize_email(admin_email)
+        except ValueError as exc:
+            raise RuntimeError("NEIVA_ADMIN_EMAIL é inválido.") from exc
+        if len(admin_password) < 12:
+            raise RuntimeError("NEIVA_ADMIN_PASSWORD deve ter pelo menos 12 caracteres.")
+        with SessionLocal() as session:
+            if not session.scalar(select(AdminUser).where(AdminUser.email == admin_email)):
+                session.add(AdminUser(email=admin_email, password_hash=password_hash(admin_password)))
+                session.commit()
+                logger.info("Administrador inicial criado para %s", admin_email)
 
 
 @app.get("/health")
@@ -1190,6 +1347,326 @@ def asaas_webhook(
     session.add(ProcessedWebhook(provider="asaas", event_id=event_id))
     session.commit()
     return {"ok": True}
+
+
+def _iso(value: datetime | None) -> str | None:
+    return value.isoformat() if value else None
+
+
+def _latest_subscription(session: Session, client_id: int) -> Subscription | None:
+    return session.scalar(select(Subscription).where(Subscription.client_id == client_id).order_by(Subscription.id.desc()))
+
+
+def _admin_client_summary(session: Session, client: Client, account: Account | None = None) -> dict:
+    if account is None and client.account_id:
+        account = session.get(Account, client.account_id)
+    subscription = _latest_subscription(session, client.id)
+    period = datetime.now(timezone.utc).strftime("%Y-%m")
+    usage = session.scalar(select(MonthlyUsage).where(MonthlyUsage.client_id == client.id, MonthlyUsage.period == period))
+    active_after = datetime.now(timezone.utc) - timedelta(days=90)
+    devices = session.scalars(select(DeviceToken).where(DeviceToken.client_id == client.id)).all()
+    active_devices = 0
+    for device in devices:
+        reference = device.last_seen_at or device.created_at
+        if reference.tzinfo is None:
+            reference = reference.replace(tzinfo=timezone.utc)
+        if reference >= active_after:
+            active_devices += 1
+    return {
+        "id": client.id,
+        "name": account.name if account else client.name,
+        "email": account.email if account else None,
+        "account_id": account.id if account else None,
+        "active": bool(client.active and (account is None or account.active)),
+        "license_active": client.active,
+        "account_active": account.active if account else None,
+        "plan_code": client.plan_code,
+        "monthly_limit": client.monthly_limit,
+        "usage_current_month": usage.requests_count if usage else 0,
+        "device_limit": client.device_limit,
+        "active_devices": active_devices,
+        "subscription_status": subscription.status if subscription else None,
+        "current_period_end": _iso(subscription.current_period_end) if subscription else None,
+        "created_at": _iso(account.created_at if account else client.created_at),
+        "legacy": account is None,
+    }
+
+
+@app.post("/v1/admin/auth/sign-in")
+def admin_sign_in(
+    payload: AdminLoginRequest,
+    response: Response,
+    session: Session = Depends(db_session),
+    x_forwarded_for: str | None = Header(default=None, alias="X-Forwarded-For"),
+    x_real_ip: str | None = Header(default=None, alias="X-Real-IP"),
+) -> dict:
+    admin_session_secret()
+    identity = login_identity("admin:" + payload.email, x_forwarded_for, x_real_ip)
+    check_login_limit(session, identity)
+    user = session.scalar(select(AdminUser).where(AdminUser.email == payload.email))
+    if not user or not user.active or not verify_password(payload.password, user.password_hash):
+        record_login_failure(session, identity)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="E-mail ou senha incorretos.")
+    clear_login_failures(session, identity)
+    now = datetime.now(timezone.utc)
+    session.execute(text("DELETE FROM admin_sessions WHERE expires_at < :now"), {"now": now})
+    session.execute(text("DELETE FROM admin_sessions WHERE admin_user_id = :admin_user_id"), {"admin_user_id": user.id})
+    raw_token = "rafaau_admin_" + secrets.token_urlsafe(32)
+    session.add(AdminSession(
+        admin_user_id=user.id,
+        token_hash=token_hash(raw_token),
+        expires_at=now + timedelta(hours=ADMIN_SESSION_HOURS),
+    ))
+    add_admin_audit(session, AdminIdentity(user, raw_token), "admin.sign_in", "admin", user.id, {})
+    session.commit()
+    set_admin_cookie(response, raw_token)
+    return {"admin": {"id": user.id, "email": user.email}, "csrf_token": admin_csrf_token(raw_token)}
+
+
+@app.get("/v1/admin/auth/session")
+def admin_auth_session(admin: AdminIdentity = Depends(current_admin)) -> dict:
+    return {"admin": {"id": admin.user.id, "email": admin.user.email}, "csrf_token": admin_csrf_token(admin.raw_token)}
+
+
+@app.post("/v1/admin/auth/sign-out")
+def admin_sign_out(
+    response: Response,
+    admin: AdminIdentity = Depends(current_admin_write),
+    session: Session = Depends(db_session),
+) -> dict[str, bool]:
+    saved = session.scalar(select(AdminSession).where(AdminSession.token_hash == token_hash(admin.raw_token)))
+    if saved:
+        session.delete(saved)
+    add_admin_audit(session, admin, "admin.sign_out", "admin", admin.user.id, {})
+    session.commit()
+    clear_admin_cookie(response)
+    return {"ok": True}
+
+
+@app.get("/v1/admin/dashboard")
+def admin_dashboard(admin: AdminIdentity = Depends(current_admin), session: Session = Depends(db_session)) -> dict:
+    del admin
+    period = datetime.now(timezone.utc).strftime("%Y-%m")
+    total_customers = session.scalar(select(func.count(Client.id))) or 0
+    active_customers = session.scalar(
+        select(func.count(Client.id))
+        .select_from(Client)
+        .outerjoin(Account, Client.account_id == Account.id)
+        .where(Client.active.is_(True), or_(Client.account_id.is_(None), Account.active.is_(True)))
+    ) or 0
+    return {
+        "total_customers": total_customers,
+        "active_customers": active_customers,
+        "suspended_customers": total_customers - active_customers,
+        "active_subscriptions": session.scalar(select(func.count(Subscription.id)).where(Subscription.status.in_(["active", "pending_cancellation"]))) or 0,
+        "attention_subscriptions": session.scalar(select(func.count(Subscription.id)).where(Subscription.status.in_(["past_due", "suspended", "cancelled"]))) or 0,
+        "pending_orders": session.scalar(select(func.count(CheckoutOrder.id)).where(CheckoutOrder.status == "pending")) or 0,
+        "ai_usage_current_month": session.scalar(select(func.coalesce(func.sum(MonthlyUsage.requests_count), 0)).where(MonthlyUsage.period == period)) or 0,
+        "period": period,
+    }
+
+
+@app.get("/v1/admin/customers")
+def admin_customers(
+    search: str = Query(default="", max_length=120),
+    plan: str = Query(default="", max_length=30),
+    access: str = Query(default="", max_length=20),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1, le=100),
+    admin: AdminIdentity = Depends(current_admin),
+    session: Session = Depends(db_session),
+) -> dict:
+    del admin
+    filters = []
+    if search.strip():
+        term = "%" + search.strip().lower() + "%"
+        filters.append(or_(func.lower(Client.name).like(term), func.lower(Account.name).like(term), func.lower(Account.email).like(term)))
+    if plan:
+        if plan not in {*PLANS.keys(), "legacy"}:
+            raise HTTPException(status_code=422, detail="Filtro de plano inválido.")
+        filters.append(Client.plan_code == plan)
+    if access:
+        if access not in {"active", "suspended"}:
+            raise HTTPException(status_code=422, detail="Filtro de acesso inválido.")
+        available = and_(Client.active.is_(True), or_(Client.account_id.is_(None), Account.active.is_(True)))
+        filters.append(available if access == "active" else ~available)
+
+    base = select(Client, Account).outerjoin(Account, Client.account_id == Account.id)
+    count_query = select(func.count(Client.id)).select_from(Client).outerjoin(Account, Client.account_id == Account.id)
+    if filters:
+        base = base.where(*filters)
+        count_query = count_query.where(*filters)
+    total = session.scalar(count_query) or 0
+    rows = session.execute(base.order_by(Client.created_at.desc(), Client.id.desc()).offset((page - 1) * page_size).limit(page_size)).all()
+    return {
+        "items": [_admin_client_summary(session, client, account) for client, account in rows],
+        "page": page,
+        "page_size": page_size,
+        "total": total,
+        "pages": max(1, (total + page_size - 1) // page_size),
+    }
+
+
+@app.get("/v1/admin/customers/{client_id}")
+def admin_customer_detail(
+    client_id: int,
+    admin: AdminIdentity = Depends(current_admin),
+    session: Session = Depends(db_session),
+) -> dict:
+    del admin
+    client = session.get(Client, client_id)
+    if not client:
+        raise HTTPException(status_code=404, detail="Cliente não encontrado.")
+    account = session.get(Account, client.account_id) if client.account_id else None
+    subscriptions = session.scalars(select(Subscription).where(Subscription.client_id == client.id).order_by(Subscription.id.desc())).all()
+    devices = session.scalars(select(DeviceToken).where(DeviceToken.client_id == client.id).order_by(DeviceToken.id.desc())).all()
+    usages = session.scalars(select(MonthlyUsage).where(MonthlyUsage.client_id == client.id).order_by(MonthlyUsage.period.desc()).limit(12)).all()
+    orders = session.scalars(select(CheckoutOrder).where(CheckoutOrder.client_id == client.id).order_by(CheckoutOrder.id.desc()).limit(20)).all()
+    return {
+        **_admin_client_summary(session, client, account),
+        "devices": [{
+            "id": device.id,
+            "label": "Dispositivo ••••" + (device.device_id or "legado")[-6:],
+            "last_seen_at": _iso(device.last_seen_at),
+            "created_at": _iso(device.created_at),
+        } for device in devices],
+        "usage_history": [{"period": usage.period, "requests_count": usage.requests_count} for usage in usages],
+        "subscriptions": [{
+            "id": item.id,
+            "provider": item.provider,
+            "provider_subscription_id": item.provider_subscription_id,
+            "plan_code": item.plan_code,
+            "status": item.status,
+            "current_period_end": _iso(item.current_period_end),
+            "created_at": _iso(item.created_at),
+        } for item in subscriptions],
+        "orders": [{
+            "public_id": order.public_id,
+            "plan_code": order.plan_code,
+            "status": order.status,
+            "checkout_id": order.checkout_id,
+            "created_at": _iso(order.created_at),
+        } for order in orders],
+    }
+
+
+@app.patch("/v1/admin/customers/{client_id}")
+def update_admin_customer(
+    client_id: int,
+    payload: AdminClientUpdateRequest,
+    admin: AdminIdentity = Depends(current_admin_write),
+    session: Session = Depends(db_session),
+) -> dict:
+    client = session.get(Client, client_id)
+    if not client:
+        raise HTTPException(status_code=404, detail="Cliente não encontrado.")
+    account = session.get(Account, client.account_id) if client.account_id else None
+    if all(value is None for value in (payload.active, payload.account_active, payload.plan_code, payload.monthly_limit, payload.device_limit)):
+        raise HTTPException(status_code=422, detail="Nenhuma alteração foi informada.")
+    before = {
+        "active": client.active,
+        "account_active": account.active if account else None,
+        "plan_code": client.plan_code,
+        "monthly_limit": client.monthly_limit,
+        "device_limit": client.device_limit,
+    }
+    if payload.plan_code is not None:
+        if payload.plan_code not in PLANS:
+            raise HTTPException(status_code=422, detail="Plano inválido.")
+        plan = PLANS[payload.plan_code]
+        client.plan_code = payload.plan_code
+        client.monthly_limit = plan["ai_credits"]
+        client.device_limit = plan["devices"]
+    if payload.active is not None:
+        client.active = payload.active
+    if payload.account_active is not None:
+        if not client.account_id:
+            raise HTTPException(status_code=422, detail="Licenças legadas não possuem conta para alterar.")
+        if not account:
+            raise HTTPException(status_code=422, detail="A conta vinculada não foi encontrada.")
+        account.active = payload.account_active
+    if payload.monthly_limit is not None:
+        client.monthly_limit = payload.monthly_limit
+    if payload.device_limit is not None:
+        client.device_limit = payload.device_limit
+    after = {
+        "active": client.active,
+        "account_active": account.active if account else None,
+        "plan_code": client.plan_code,
+        "monthly_limit": client.monthly_limit,
+        "device_limit": client.device_limit,
+    }
+    add_admin_audit(session, admin, "customer.updated", "client", client.id, {"before": before, "after": after, "reason": payload.reason})
+    session.commit()
+    return _admin_client_summary(session, client)
+
+
+@app.delete("/v1/admin/customers/{client_id}/devices/{device_id}")
+def revoke_admin_device(
+    client_id: int,
+    device_id: int,
+    reason: str = Query(min_length=3, max_length=500),
+    admin: AdminIdentity = Depends(current_admin_write),
+    session: Session = Depends(db_session),
+) -> dict[str, bool]:
+    device = session.scalar(select(DeviceToken).where(DeviceToken.id == device_id, DeviceToken.client_id == client_id))
+    if not device:
+        raise HTTPException(status_code=404, detail="Dispositivo não encontrado.")
+    session.delete(device)
+    add_admin_audit(session, admin, "device.revoked", "device", device_id, {"client_id": client_id, "reason": reason})
+    session.commit()
+    return {"ok": True}
+
+
+@app.post("/v1/admin/customers/{client_id}/revoke-devices")
+def revoke_all_admin_devices(
+    client_id: int,
+    reason: str = Query(min_length=3, max_length=500),
+    admin: AdminIdentity = Depends(current_admin_write),
+    session: Session = Depends(db_session),
+) -> dict:
+    if not session.get(Client, client_id):
+        raise HTTPException(status_code=404, detail="Cliente não encontrado.")
+    devices = session.scalars(select(DeviceToken).where(DeviceToken.client_id == client_id)).all()
+    for device in devices:
+        session.delete(device)
+    add_admin_audit(session, admin, "devices.revoked_all", "client", client_id, {"count": len(devices), "reason": reason})
+    session.commit()
+    return {"ok": True, "revoked": len(devices)}
+
+
+@app.get("/v1/admin/audit")
+def admin_audit(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=30, ge=1, le=100),
+    admin: AdminIdentity = Depends(current_admin),
+    session: Session = Depends(db_session),
+) -> dict:
+    del admin
+    total = session.scalar(select(func.count(AdminAuditLog.id))) or 0
+    rows = session.execute(
+        select(AdminAuditLog, AdminUser)
+        .join(AdminUser, AdminAuditLog.admin_user_id == AdminUser.id)
+        .order_by(AdminAuditLog.id.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    ).all()
+    items = []
+    for entry, user in rows:
+        try:
+            details = json.loads(entry.details_json)
+        except (TypeError, ValueError):
+            details = {}
+        items.append({
+            "id": entry.id,
+            "admin_email": user.email,
+            "action": entry.action,
+            "target_type": entry.target_type,
+            "target_id": entry.target_id,
+            "details": details,
+            "created_at": _iso(entry.created_at),
+        })
+    return {"items": items, "page": page, "total": total, "pages": max(1, (total + page_size - 1) // page_size)}
 
 
 @app.post("/v1/admin/billing/subscriptions", dependencies=[Depends(require_admin)])

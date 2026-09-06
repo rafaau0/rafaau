@@ -4,6 +4,8 @@ Aplicativo desktop para planejar calendários editoriais, clientes, conteúdos, 
 
 O **Estúdio de Vídeo** abre o DaVinci Resolve instalado no computador do cliente e instala um comando no menu **Espaço de trabalho → Scripts → Edit → rafaau_timeline**. O comando analisa o vídeo já aberto, pede confirmação antes de aplicar, cria uma nova timeline sem os silêncios detectados e gera localmente legendas em português para uso no Resolve gratuito. A timeline original nunca é alterada.
 
+A equipe do produto possui uma área privada em `/admin` no site para consultar assinantes, planos, consumo de IA, assinaturas e dispositivos, suspender ou restaurar acessos e revisar o histórico auditável. O painel não acessa clientes, posts ou calendários armazenados localmente no desktop.
+
 A interface é adaptativa: em janelas estreitas, o menu lateral se recolhe e a navegação continua disponível por um seletor no topo. Em telas maiores, o menu lateral completo é restaurado automaticamente.
 
 ## Navegação

@@ -8,7 +8,7 @@ Há três aplicações no mesmo repositório:
 
 1. **Aplicativo desktop Windows** (`content_planner/`): mantém clientes e calendários editoriais localmente, exporta PDFs, envia planejamentos ao Trello e abre o DaVinci Resolve instalado para edição externa de vídeo.
 2. **API remota** (`ai_service/`): mantém contas, licenças, planos, dispositivos, cotas de IA e cobrança; intermedeia chamadas à OpenAI; e protege o segredo OAuth do Trello.
-3. **Site público** (`neiva-site/`): landing page, cadastro/login para checkout, redirecionamento ao Asaas, consulta do status de ativação e download do aplicativo.
+3. **Site público e administração** (`neiva-site/`): landing page, cadastro/login para checkout, redirecionamento ao Asaas, consulta do status de ativação, download do aplicativo e painel privado `/admin` para administrar assinantes.
 
 O código usa os nomes “Neiva Planner”, “Neiva” e “rafaau” para o mesmo produto. A marca pública mais recente no site/login é “rafaau”, mas nomes internos, executável, caminhos locais e API ainda usam “Neiva”. Não uniformizar isso sem levantar impactos de compatibilidade.
 
@@ -131,6 +131,9 @@ Modelos definidos em `ai_service/app/main.py`:
 - `login_throttles`: limite persistente de tentativas por hash de conta/origem; nunca armazena e-mail/IP em claro.
 - `checkout_orders`: pedido, claim token, chave de idempotência, checkout Asaas e vínculo posterior à licença.
 - `trello_oauth_requests`: estado efêmero do OAuth, vinculado à licença e criptografado.
+- `admin_users`: operadores administrativos separados das contas de clientes; o primeiro é criado somente pelas variáveis de ambiente de bootstrap.
+- `admin_sessions`: sessões administrativas opacas, armazenadas somente por hash e com expiração absoluta de duas horas.
+- `admin_audit_logs`: trilha das alterações de acesso, plano, limites e revogação de dispositivos, sempre com justificativa.
 
 As tabelas são criadas no evento de startup. Três tabelas recebem migrações aditivas manuais por `ALTER TABLE`. Não há Alembic, rollback ou controle de versão de migrations; alterações destrutivas ou restrições novas são especialmente sensíveis.
 
@@ -167,6 +170,8 @@ As tabelas são criadas no evento de startup. Três tabelas recebem migrações 
 - `neiva-site/app/page.tsx`: conteúdo, preços e landing page.
 - `neiva-site/components/checkout-button.tsx`: cadastro/login, checkout e armazenamento local do claim token.
 - `neiva-site/components/activation-status.tsx`: polling curto do status da licença após retorno do Asaas.
+- `neiva-site/app/admin/page.tsx` e `components/admin-panel.tsx`: login e superfície administrativa de assinantes, assinaturas, consumo e dispositivos.
+- `neiva-site/app/admin-api/route.ts`: proxy estritamente limitado a `/v1/admin/*`; mantém o cookie administrativo no mesmo domínio do site e evita dependência de cookies de terceiros.
 - `neiva-site/vite.config.ts`: integração Vinext/OpenAI Sites/Cloudflare.
 
 ## 7. Fluxos importantes
@@ -206,6 +211,10 @@ Arquivos principais desse fluxo: `content_planner/davinci_integration.py` (insta
 
 O site cadastra ou autentica a conta na API. Plano grátis termina após criar a conta. Planos pagos criam `CheckoutOrder`, abrem checkout recorrente mensal por cartão no Asaas e guardam um claim token no `localStorage`. Webhooks idempotentes ativam/atualizam `Client` e `Subscription`. O retorno do site consulta o pedido usando public ID + claim token. O desktop obtém o plano atualizado no login/sessão.
 
+### Administração
+
+O primeiro operador é criado no startup da API somente quando `NEIVA_ADMIN_EMAIL` e `NEIVA_ADMIN_PASSWORD` estão configurados e ainda não existe esse e-mail. O login em `/admin` cria um token opaco cujo hash fica em `admin_sessions`; o navegador recebe cookie `HttpOnly`, `Secure` em produção e `SameSite=None`. O site acessa a API pelo proxy same-origin `/admin-api`, restrito por validação de URL às rotas administrativas. Leituras exigem sessão válida; escritas exigem também `X-Admin-CSRF`, derivado no servidor com `ADMIN_SESSION_SECRET`, e justificativa. Suspensão/reativação altera conta e licença em conjunto; mudança manual de plano/limites não altera o registro do provedor e pode ser substituída pelo próximo webhook Asaas. Nunca retornar senha, hashes ou tokens de dispositivo. O painel administra assinantes remotos, não os clientes/posts do SQLite local.
+
 ## 8. APIs e integrações
 
 Rotas reais da API:
@@ -227,6 +236,10 @@ Rotas reais da API:
 - `POST /v1/webhooks/asaas`
 - `POST /v1/admin/clients`
 - `POST /v1/admin/billing/subscriptions`
+- `POST /v1/admin/auth/sign-in`, `POST /v1/admin/auth/sign-out`, `GET /v1/admin/auth/session`
+- `GET /v1/admin/dashboard`, `GET /v1/admin/customers`, `GET/PATCH /v1/admin/customers/{client_id}`
+- `DELETE /v1/admin/customers/{client_id}/devices/{device_id}`, `POST /v1/admin/customers/{client_id}/revoke-devices`
+- `GET /v1/admin/audit`
 
 Integrações externas: OpenAI Responses API, Asaas, Trello REST/OAuth 1.0, YouTube via yt-dlp, GitHub Releases para download e Cloudflare/OpenAI Sites para hospedagem web.
 
@@ -235,7 +248,7 @@ Integrações externas: OpenAI Responses API, Asaas, Trello REST/OAuth 1.0, YouT
 - Senhas remotas usam PBKDF2-HMAC-SHA256 com sal individual e 600.000 iterações.
 - Tokens brutos de conta/licença/dispositivo, códigos e claims são armazenados na API somente como SHA-256; exceção temporária: `CheckoutOrder.activation_code` legado fica reversível até a ativação.
 - Sessões web expiram em duas horas. Tokens de dispositivo não possuem expiração no código atual.
-- Admin usa bearer comparado com `NEIVA_ADMIN_TOKEN` via `hmac.compare_digest`.
+- As duas rotas administrativas técnicas legadas usam bearer comparado com `NEIVA_ADMIN_TOKEN` via `hmac.compare_digest`. O painel web usa operador/senha, cookie `HttpOnly`, sessão de duas horas, CSRF e auditoria.
 - Webhook Asaas exige `asaas-access-token` igual a `ASAAS_WEBHOOK_TOKEN` e registra event ID.
 - Segredo OAuth Trello e chave OpenAI permanecem no servidor. Credenciais OAuth temporárias usam AES-GCM; o access token final é entregue uma vez ao cliente.
 - Desktop armazena tokens no keyring e nunca deve voltar a gravá-los em SQLite, arquivos, logs ou Git.
@@ -249,6 +262,9 @@ Integrações externas: OpenAI Responses API, Asaas, Trello REST/OAuth 1.0, YouT
 - `OPENAI_API_KEY`: obrigatória para cortes por IA.
 - `OPENAI_MODEL`: opcional, padrão `gpt-5-mini`.
 - `NEIVA_ADMIN_TOKEN`: obrigatória para rotas administrativas.
+- `NEIVA_ADMIN_EMAIL`, `NEIVA_ADMIN_PASSWORD`: bootstrap do primeiro operador do painel; a senha exige no mínimo 12 caracteres e não é atualizada automaticamente em startups posteriores.
+- `ADMIN_SESSION_SECRET`: chave para CSRF das sessões administrativas; se ausente usa `NEIVA_ADMIN_TOKEN` por compatibilidade.
+- `ADMIN_COOKIE_SECURE`: padrão seguro; definir `false` somente no HTTP local.
 - `TRELLO_API_KEY`, `TRELLO_API_SECRET`: credenciais do Power-Up; o secret também cifra estado OAuth.
 - `PUBLIC_API_URL`: base do callback OAuth; padrão de produção hardcoded.
 - `ASAAS_API_KEY`, `ASAAS_BASE_URL`, `ASAAS_WEBHOOK_TOKEN`: checkout e webhook.
@@ -267,7 +283,7 @@ Integrações externas: OpenAI Responses API, Asaas, Trello REST/OAuth 1.0, YouT
 
 - A API de produção/staging é escolhida por hostname e está hardcoded nos componentes.
 - `CODEX_SANDBOX`, `WRANGLER_WRITE_LOGS`, `WRANGLER_LOG_PATH` e `MINIFLARE_REGISTRY_PATH` são configurações de tooling local, não regras de produto.
-- Não existe `.env.example`. Não existe configuração versionada de deploy da API (por exemplo `render.yaml`, Dockerfile ou Procfile); o comando/configuração exata de produção é desconhecido pelo repositório.
+- `ai_service/.env.example` documenta as chaves sem conter valores secretos. Não existe configuração versionada de deploy da API (por exemplo `render.yaml`, Dockerfile ou Procfile); o comando/configuração exata de produção é desconhecido pelo repositório.
 
 ## 11. Convenções utilizadas
 
@@ -324,8 +340,9 @@ Estado verificado diretamente em 2026-09-05: 41 testes Python passam; `npm run l
 
 1. Ler este arquivo e os módulos diretamente envolvidos antes de editar; o código é a fonte principal da verdade.
 2. Não versionar bancos, exportações, vídeos, executáveis, caches, `.env` ou segredos.
-3. Não colocar `OPENAI_API_KEY`, `TRELLO_API_SECRET`, `NEIVA_ADMIN_TOKEN` ou chaves Asaas no desktop/site.
+3. Não colocar `OPENAI_API_KEY`, `TRELLO_API_SECRET`, `NEIVA_ADMIN_TOKEN`, credenciais administrativas ou chaves Asaas no desktop/site.
 4. Ao alterar login, plano ou cobrança, analisar em conjunto API, `account_sessions.py`, `account_login.py`, `plan_rules.py` e checkout do site.
+   Para administração, revisar também `AdminSession`, CSRF, `/admin-api`, auditoria e os efeitos do próximo webhook Asaas.
 5. Ao alterar persistência, preservar isolamento por conta, migração de instalações legadas e bancos já existentes.
 6. Ao alterar Trello, preservar entrega única do token, vínculo da requisição ao cliente e idempotência de listas/cards.
 7. Ao alterar vídeo, validar arquivo local e build PyInstaller, disponibilidade de FFmpeg/FFprobe, vídeo sem áudio, caminhos Windows e custo de CPU/RAM.
@@ -513,7 +530,7 @@ O código foi alterado para tratar os 51 achados do relatório. O histórico da 
 ### Estado dos testes
 
 - `python -m compileall -q content_planner ai_service tests`: passou.
-- `.venv\Scripts\python.exe -m unittest discover -s tests -q`: 50/50 passaram em 2026-09-06.
+- `.venv\Scripts\python.exe -m unittest discover -s tests -q`: 53/53 passaram em 2026-09-06 após a inclusão da base administrativa.
 - `npm run lint` em `neiva-site`: passou para `app/` e componentes publicados.
 - `npm run build` em `neiva-site`: passou; Vinext ainda informa apenas que a classificação estática da rota é desconhecida.
 - `git diff --check`: passou.
