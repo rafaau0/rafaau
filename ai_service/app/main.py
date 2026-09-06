@@ -1668,6 +1668,130 @@ def revoke_all_admin_devices(
     return {"ok": True, "revoked": len(devices)}
 
 
+@app.get("/v1/admin/maintenance/purge-test-data", response_class=HTMLResponse, include_in_schema=False)
+def purge_admin_test_data_page() -> HTMLResponse:
+    """Tela temporaria para ambientes Render sem acesso ao Shell."""
+    nonce = secrets.token_urlsafe(18)
+    document = """<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Limpeza de testes | rafaau</title>
+  <style nonce="__NONCE__">
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px; background: #f4f2ed; color: #181818; font: 16px/1.5 Arial, sans-serif; }
+    main { width: min(100%, 560px); overflow: hidden; border: 1px solid #e7e5e4; border-radius: 18px; background: white; box-shadow: 0 18px 45px #1c191710; }
+    header { padding: 24px 28px; background: #191919; color: white; }
+    header strong { font-size: 28px; } header strong span { color: #e23a4a; }
+    section { padding: 28px; } h1 { margin: 0 0 8px; font-size: 25px; } p { margin: 0 0 20px; color: #57534e; }
+    label { display: block; margin-top: 16px; font-size: 14px; font-weight: 700; color: #44403c; }
+    input { width: 100%; height: 44px; margin-top: 7px; padding: 0 12px; border: 1px solid #d6d3d1; border-radius: 9px; font: inherit; }
+    button { width: 100%; min-height: 44px; margin-top: 20px; border: 0; border-radius: 9px; background: #e23a4a; color: white; font-weight: 800; cursor: pointer; }
+    button:disabled { cursor: not-allowed; opacity: .45; }
+    .warning { padding: 14px; border: 1px solid #fecaca; border-radius: 10px; background: #fef2f2; color: #991b1b; }
+    .status { min-height: 24px; margin-top: 16px; font-weight: 700; color: #991b1b; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <main>
+    <header><strong>rafaau<span>.</span></strong><div>Manutenção temporária</div></header>
+    <section id="login">
+      <h1>Acesso administrativo</h1>
+      <p>Entre com o mesmo e-mail e senha do painel administrativo.</p>
+      <form id="login-form">
+        <label>E-mail<input id="email" type="email" autocomplete="username" required></label>
+        <label>Senha<input id="password" type="password" autocomplete="current-password" required></label>
+        <button id="login-button" type="submit">ENTRAR</button>
+      </form>
+      <div class="status" id="login-status" role="alert"></div>
+    </section>
+    <section id="purge" class="hidden">
+      <h1>Limpar dados de teste</h1>
+      <p class="warning">A ação é irreversível. Ela não cancela assinaturas diretamente no Asaas.</p>
+      <p>Registros encontrados: <strong id="customer-count">0</strong> clientes.</p>
+      <label>Motivo<input id="reason" placeholder="Ex.: encerramento dos testes de QA"></label>
+      <label>Digite LIMPAR DADOS DE TESTE<input id="confirmation" autocomplete="off"></label>
+      <button id="purge-button" type="button" disabled>APAGAR DADOS DE TESTE</button>
+      <div class="status" id="purge-status" role="alert"></div>
+    </section>
+  </main>
+  <script nonce="__NONCE__">
+    let csrfToken = '';
+    let customerCount = 0;
+    const login = document.getElementById('login');
+    const purge = document.getElementById('purge');
+    const reason = document.getElementById('reason');
+    const confirmation = document.getElementById('confirmation');
+    const purgeButton = document.getElementById('purge-button');
+    async function request(path, options = {}) {
+      const response = await fetch(path, { ...options, credentials: 'include' });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.detail || 'Não foi possível concluir a operação.');
+      return data;
+    }
+    async function showPurge(session) {
+      csrfToken = session.csrf_token;
+      const dashboard = await request('/v1/admin/dashboard');
+      customerCount = dashboard.total_customers;
+      document.getElementById('customer-count').textContent = String(customerCount);
+      login.classList.add('hidden');
+      purge.classList.remove('hidden');
+    }
+    document.getElementById('login-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const button = document.getElementById('login-button');
+      const status = document.getElementById('login-status');
+      button.disabled = true; status.textContent = '';
+      try {
+        const session = await request('/v1/admin/auth/sign-in', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: document.getElementById('email').value, password: document.getElementById('password').value })
+        });
+        document.getElementById('password').value = '';
+        await showPurge(session);
+      } catch (error) { status.textContent = error.message; }
+      finally { button.disabled = false; }
+    });
+    function validate() {
+      purgeButton.disabled = reason.value.trim().length < 3 || confirmation.value !== 'LIMPAR DADOS DE TESTE' || customerCount < 1;
+    }
+    reason.addEventListener('input', validate); confirmation.addEventListener('input', validate);
+    purgeButton.addEventListener('click', async () => {
+      if (!confirm(`Confirma a exclusão definitiva de ${customerCount} clientes de teste?`)) return;
+      purgeButton.disabled = true;
+      const status = document.getElementById('purge-status'); status.textContent = 'Limpando…';
+      try {
+        const result = await request('/v1/admin/maintenance/purge-test-data', {
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Admin-CSRF': csrfToken },
+          body: JSON.stringify({ confirmation: confirmation.value, expected_customers: customerCount, reason: reason.value.trim() })
+        });
+        status.style.color = '#047857';
+        status.textContent = `Limpeza concluída: ${result.deleted.accounts} contas e ${result.deleted.clients} clientes removidos.`;
+        customerCount = 0; document.getElementById('customer-count').textContent = '0';
+        reason.disabled = true; confirmation.disabled = true; purgeButton.disabled = true;
+      } catch (error) { status.textContent = error.message; validate(); }
+    });
+    request('/v1/admin/auth/session').then(showPurge).catch(() => {});
+  </script>
+</body>
+</html>""".replace("__NONCE__", html.escape(nonce, quote=True))
+    return HTMLResponse(
+        document,
+        headers={
+            "Cache-Control": "no-store",
+            "Content-Security-Policy": (
+                "default-src 'none'; "
+                f"script-src 'nonce-{nonce}'; style-src 'nonce-{nonce}'; "
+                "connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
+            ),
+            "X-Content-Type-Options": "nosniff",
+            "Referrer-Policy": "no-referrer",
+        },
+    )
+
+
 @app.post("/v1/admin/maintenance/purge-test-data")
 def purge_admin_test_data(
     payload: AdminPurgeTestDataRequest,

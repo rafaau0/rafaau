@@ -37,6 +37,7 @@ from ai_service.app.main import (
     current_admin_write,
     password_hash,
     purge_admin_test_data,
+    purge_admin_test_data_page,
     revoke_admin_device,
     token_hash,
     update_admin_customer,
@@ -249,6 +250,15 @@ class AdminServiceTests(unittest.TestCase):
             self.assertEqual(raised.exception.status_code, 409)
             self.assertIsNotNone(session.scalar(select(Account)))
             self.assertIsNotNone(session.scalar(select(Client)))
+
+    def test_temporary_purge_page_has_strict_browser_protections(self) -> None:
+        response = purge_admin_test_data_page()
+        document = response.body.decode("utf-8")
+
+        self.assertIn("LIMPAR DADOS DE TESTE", document)
+        self.assertIn("Content-Security-Policy", response.headers)
+        self.assertIn("frame-ancestors 'none'", response.headers["Content-Security-Policy"])
+        self.assertEqual(response.headers["Cache-Control"], "no-store")
 
 
 if __name__ == "__main__":
