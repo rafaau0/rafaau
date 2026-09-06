@@ -114,6 +114,10 @@ def _integration_config():
     return config
 
 
+def _child_environment():
+    return {key: value for key, value in os.environ.items() if not key.startswith("_PYI_")}
+
+
 def _all_items(timeline, track_type):
     items = []
     for track_index in range(1, int(timeline.GetTrackCount(track_type) or 0) + 1):
@@ -307,6 +311,7 @@ def generate_local_captions(context, kept, chars_per_caption):
             stderr=subprocess.PIPE,
             universal_newlines=True,
             creationflags=flags,
+            env=_child_environment(),
             timeout=max(900, min(21600, int(context.duration_seconds * 12 + 300))),
         )
     except subprocess.TimeoutExpired as exc:
@@ -363,6 +368,7 @@ def show_rafaau_dialog(kind, message):
             stderr=subprocess.PIPE,
             universal_newlines=True,
             creationflags=flags,
+            env=_child_environment(),
         )
         result = json.loads(result_path.read_text(encoding="utf-8"))
         if process.returncode != 0 or not result.get("ok"):
