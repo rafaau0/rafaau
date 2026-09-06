@@ -420,6 +420,31 @@ def new_activation_code() -> str:
     return f"NEIVA-{secrets.token_urlsafe(12).upper()}"
 
 
+def bootstrap_admin(session: Session, email: str, password: str, reset_password: bool = False) -> str:
+    """Cria o primeiro operador ou redefine sua senha somente sob sinalização explícita."""
+    user = session.scalar(select(AdminUser).where(AdminUser.email == email))
+    if user is None:
+        user = AdminUser(email=email, password_hash=password_hash(password))
+        session.add(user)
+        session.flush()
+        result = "created"
+    elif reset_password:
+        user.password_hash = password_hash(password)
+        session.execute(text("DELETE FROM admin_sessions WHERE admin_user_id = :admin_user_id"), {"admin_user_id": user.id})
+        session.add(AdminAuditLog(
+            admin_user_id=user.id,
+            action="admin.password_reset",
+            target_type="admin",
+            target_id=str(user.id),
+            details_json='{"source": "environment"}',
+        ))
+        result = "reset"
+    else:
+        return "unchanged"
+    session.commit()
+    return result
+
+
 def activate_paid_order(session: Session, order: CheckoutOrder) -> None:
     """Cria uma Ãºnica licenÃ§a para um pedido confirmado pelo Asaas."""
     if order.client_id is not None:
@@ -773,10 +798,12 @@ def initialize_database() -> None:
         if len(admin_password) < 12:
             raise RuntimeError("NEIVA_ADMIN_PASSWORD deve ter pelo menos 12 caracteres.")
         with SessionLocal() as session:
-            if not session.scalar(select(AdminUser).where(AdminUser.email == admin_email)):
-                session.add(AdminUser(email=admin_email, password_hash=password_hash(admin_password)))
-                session.commit()
+            reset_password = os.getenv("NEIVA_ADMIN_RESET_PASSWORD", "").strip().lower() in {"1", "true", "yes"}
+            result = bootstrap_admin(session, admin_email, admin_password, reset_password)
+            if result == "created":
                 logger.info("Administrador inicial criado para %s", admin_email)
+            elif result == "reset":
+                logger.warning("Senha administrativa redefinida por configuração de ambiente para %s", admin_email)
 
 
 @app.get("/health")

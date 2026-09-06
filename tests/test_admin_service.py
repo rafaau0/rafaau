@@ -23,12 +23,14 @@ from ai_service.app.main import (
     admin_csrf_token,
     admin_customer_detail,
     admin_sign_in,
+    bootstrap_admin,
     current_admin,
     current_admin_write,
     password_hash,
     revoke_admin_device,
     token_hash,
     update_admin_customer,
+    verify_password,
 )
 
 
@@ -59,6 +61,25 @@ class AdminServiceTests(unittest.TestCase):
             self.assertTrue(cookie[ADMIN_COOKIE_NAME]["httponly"])
             self.assertEqual(result["csrf_token"], admin_csrf_token(raw_token))
             self.assertIsNotNone(session.scalar(select(AdminSession).where(AdminSession.token_hash == token_hash(raw_token))))
+
+    def test_explicit_password_reset_revokes_existing_admin_sessions(self) -> None:
+        with Session(self.engine) as session:
+            user = AdminUser(email="owner@example.com", password_hash=password_hash("old-strong-password"))
+            session.add(user)
+            session.flush()
+            from datetime import datetime, timedelta, timezone
+            session.add(AdminSession(
+                admin_user_id=user.id,
+                token_hash=token_hash("existing-session"),
+                expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+            ))
+            session.commit()
+
+            self.assertEqual(bootstrap_admin(session, user.email, "new-strong-password", True), "reset")
+            self.assertTrue(verify_password("new-strong-password", user.password_hash))
+            self.assertFalse(verify_password("old-strong-password", user.password_hash))
+            self.assertIsNone(session.scalar(select(AdminSession)))
+            self.assertEqual(session.scalar(select(AdminAuditLog)).action, "admin.password_reset")
 
     def test_session_and_csrf_are_required(self) -> None:
         with Session(self.engine) as session, patch.dict("os.environ", self.environment):

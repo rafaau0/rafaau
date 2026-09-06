@@ -11,6 +11,7 @@ Variáveis de produção:
 - `OPENAI_MODEL`: opcional; padrão `gpt-5-mini`.
 - `NEIVA_ADMIN_TOKEN`: bearer secreto das rotas administrativas.
 - `NEIVA_ADMIN_EMAIL` e `NEIVA_ADMIN_PASSWORD`: criam o primeiro operador do painel `/admin` quando ainda não existe. A senha deve ter pelo menos 12 caracteres.
+- `NEIVA_ADMIN_RESET_PASSWORD`: mantenha `false`. Em uma recuperação, defina `true` junto da nova `NEIVA_ADMIN_PASSWORD` por um único deploy; depois volte imediatamente para `false`. A redefinição revoga sessões administrativas existentes e gera auditoria.
 - `ADMIN_SESSION_SECRET`: assina a proteção CSRF das sessões administrativas. Deve ser longo, aleatório e diferente da senha; por compatibilidade, a API usa `NEIVA_ADMIN_TOKEN` quando ele não é configurado.
 - `ADMIN_COOKIE_SECURE`: mantenha `true` em produção. Use `false` somente no desenvolvimento HTTP local.
 - `TRELLO_API_KEY` e `TRELLO_API_SECRET`: credenciais OAuth 1.0 do Power-Up.

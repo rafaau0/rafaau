@@ -263,6 +263,7 @@ Integrações externas: OpenAI Responses API, Asaas, Trello REST/OAuth 1.0, YouT
 - `OPENAI_MODEL`: opcional, padrão `gpt-5-mini`.
 - `NEIVA_ADMIN_TOKEN`: obrigatória para rotas administrativas.
 - `NEIVA_ADMIN_EMAIL`, `NEIVA_ADMIN_PASSWORD`: bootstrap do primeiro operador do painel; a senha exige no mínimo 12 caracteres e não é atualizada automaticamente em startups posteriores.
+- `NEIVA_ADMIN_RESET_PASSWORD`: recuperação excepcional. Somente `true` redefine o hash do operador indicado por `NEIVA_ADMIN_EMAIL`, revoga suas sessões e registra auditoria; retornar para `false` logo após o deploy.
 - `ADMIN_SESSION_SECRET`: chave para CSRF das sessões administrativas; se ausente usa `NEIVA_ADMIN_TOKEN` por compatibilidade.
 - `ADMIN_COOKIE_SECURE`: padrão seguro; definir `false` somente no HTTP local.
 - `TRELLO_API_KEY`, `TRELLO_API_SECRET`: credenciais do Power-Up; o secret também cifra estado OAuth.
@@ -530,7 +531,7 @@ O código foi alterado para tratar os 51 achados do relatório. O histórico da 
 ### Estado dos testes
 
 - `python -m compileall -q content_planner ai_service tests`: passou.
-- `.venv\Scripts\python.exe -m unittest discover -s tests -q`: 53/53 passaram em 2026-09-06 após a inclusão da base administrativa.
+- `.venv\Scripts\python.exe -m unittest discover -s tests -q`: 54/54 passaram em 2026-09-06 após a inclusão da base administrativa e recuperação de senha por configuração temporária.
 - `npm run lint` em `neiva-site`: passou para `app/` e componentes publicados.
 - `npm run build` em `neiva-site`: passou; Vinext ainda informa apenas que a classificação estática da rota é desconhecida.
 - `git diff --check`: passou.
