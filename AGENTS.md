@@ -236,6 +236,7 @@ Rotas reais da API:
 - `POST /v1/webhooks/asaas`
 - `POST /v1/admin/clients`
 - `POST /v1/admin/billing/subscriptions`
+- `POST /v1/admin/maintenance/purge-test-data` (temporária; limpeza integral dos cadastros de teste)
 - `POST /v1/admin/auth/sign-in`, `POST /v1/admin/auth/sign-out`, `GET /v1/admin/auth/session`
 - `GET /v1/admin/dashboard`, `GET /v1/admin/customers`, `GET/PATCH /v1/admin/customers/{client_id}`
 - `DELETE /v1/admin/customers/{client_id}/devices/{device_id}`, `POST /v1/admin/customers/{client_id}/revoke-devices`
@@ -353,6 +354,7 @@ Estado verificado diretamente em 2026-09-05: 41 testes Python passam; `npm run l
 10. Não atualizar FFmpeg sem atualizar URL, versão, SHA-256, licença e `BUILD_INFO.txt` de forma coerente.
 11. Não enfraquecer a separação de releases: stable `vX.Y.Z` deve continuar exigindo assinatura válida; somente tags com sufixo podem ser publicadas como prerelease sem assinatura.
 12. O link direto para `v1.1.1-test.1` no site é temporário. Não manter uma prerelease não assinada como download público ao encerrar os testes; restaurar o canal `releases/latest` junto da publicação stable assinada.
+13. A rota e o botão `purge-test-data` são temporários para zerar o ambiente antes da entrada de clientes reais. Eles exigem sessão admin, CSRF, frase exata, motivo e contagem esperada. Removê-los em um segundo commit imediatamente após a limpeza; nunca adaptar essa rota para exclusão cotidiana de clientes.
 
 ## 14. Partes sensíveis
 

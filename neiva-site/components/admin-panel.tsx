@@ -12,6 +12,7 @@ import {
   LogOut,
   Search,
   ShieldCheck,
+  Trash2,
   UserRoundCog,
   Users,
 } from 'lucide-react';
@@ -258,6 +259,10 @@ export function AdminPanel() {
     null,
   );
   const [actionLoading, setActionLoading] = useState(false);
+  const [purgeOpen, setPurgeOpen] = useState(false);
+  const [purgeConfirmation, setPurgeConfirmation] = useState('');
+  const [purgeReason, setPurgeReason] = useState('');
+  const [purgeLoading, setPurgeLoading] = useState(false);
 
   const loadCustomers = useCallback(
     async (targetPage = page) => {
@@ -449,6 +454,52 @@ export function AdminPanel() {
       );
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function executeTestDataPurge() {
+    if (
+      !session ||
+      !dashboard ||
+      purgeConfirmation !== 'LIMPAR DADOS DE TESTE' ||
+      purgeReason.trim().length < 3
+    )
+      return;
+    setPurgeLoading(true);
+    setError('');
+    setNotice('');
+    try {
+      const result = await api<{
+        ok: boolean;
+        deleted: { accounts: number; clients: number };
+      }>(
+        '/v1/admin/maintenance/purge-test-data',
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            confirmation: purgeConfirmation,
+            expected_customers: dashboard.total_customers,
+            reason: purgeReason.trim(),
+          }),
+        },
+        session.csrf_token,
+      );
+      setPurgeOpen(false);
+      setPurgeConfirmation('');
+      setPurgeReason('');
+      setDetail(null);
+      await loadWorkspace();
+      setNotice(
+        `Limpeza concluída: ${result.deleted.accounts} contas e ${result.deleted.clients} clientes removidos.`,
+      );
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : 'Não foi possível limpar os dados de teste.',
+      );
+    } finally {
+      setPurgeLoading(false);
     }
   }
 
@@ -662,6 +713,23 @@ export function AdminPanel() {
                 ),
               )}
             </div>
+            <section className="mt-6 flex flex-col gap-4 rounded-xl border border-red-200 bg-red-50 p-5 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="font-bold text-red-900">Limpeza temporária de testes</h2>
+                <p className="mt-1 max-w-3xl text-sm leading-6 text-red-800">
+                  Remove todos os cadastros e dados vinculados deste ambiente.
+                  Não cancela cobranças ou assinaturas diretamente no Asaas.
+                </p>
+              </div>
+              <Button
+                variant="destructive"
+                disabled={!dashboard?.total_customers}
+                onClick={() => setPurgeOpen(true)}
+                className="shrink-0"
+              >
+                <Trash2 /> Limpar dados de teste
+              </Button>
+            </section>
             <section className="mt-6 rounded-xl border border-stone-200 bg-white shadow-sm">
               <form
                 onSubmit={applyFilters}
@@ -1119,6 +1187,58 @@ export function AdminPanel() {
             >
               {actionLoading ? 'Processando…' : 'Confirmar'}
             </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={purgeOpen}
+        onOpenChange={(open) => {
+          if (!purgeLoading) setPurgeOpen(open);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Apagar todos os dados de teste?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação é irreversível e removerá {dashboard?.total_customers || 0}{' '}
+              clientes, contas, dispositivos, sessões, pedidos, assinaturas locais,
+              uso de IA e conexões Trello. O administrador e a auditoria serão preservados.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-4 py-2">
+            <label className="block text-sm font-semibold text-stone-700">
+              Motivo da limpeza
+              <Input
+                value={purgeReason}
+                onChange={(event) => setPurgeReason(event.target.value)}
+                placeholder="Ex.: encerramento dos testes de QA"
+                className="mt-2 h-10 bg-white"
+              />
+            </label>
+            <label className="block text-sm font-semibold text-stone-700">
+              Digite LIMPAR DADOS DE TESTE para confirmar
+              <Input
+                value={purgeConfirmation}
+                onChange={(event) => setPurgeConfirmation(event.target.value)}
+                autoComplete="off"
+                className="mt-2 h-10 bg-white"
+              />
+            </label>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={purgeLoading}>Cancelar</AlertDialogCancel>
+            <Button
+              variant="destructive"
+              disabled={
+                purgeLoading ||
+                purgeReason.trim().length < 3 ||
+                purgeConfirmation !== 'LIMPAR DADOS DE TESTE'
+              }
+              onClick={executeTestDataPurge}
+            >
+              {purgeLoading ? 'Limpando…' : 'Apagar dados de teste'}
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

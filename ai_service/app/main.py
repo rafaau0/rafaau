@@ -21,7 +21,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field, field_validator
 from requests_oauthlib import OAuth1Session
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint, and_, create_engine, func, inspect, or_, select, text, update
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint, and_, create_engine, delete, func, inspect, or_, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
@@ -288,6 +288,12 @@ class AdminClientUpdateRequest(BaseModel):
     plan_code: str | None = None
     monthly_limit: int | None = Field(default=None, ge=0, le=10000)
     device_limit: int | None = Field(default=None, ge=1, le=20)
+    reason: str = Field(min_length=3, max_length=500)
+
+
+class AdminPurgeTestDataRequest(BaseModel):
+    confirmation: str = Field(min_length=1, max_length=80)
+    expected_customers: int = Field(ge=0)
     reason: str = Field(min_length=3, max_length=500)
 
 
@@ -1660,6 +1666,62 @@ def revoke_all_admin_devices(
     add_admin_audit(session, admin, "devices.revoked_all", "client", client_id, {"count": len(devices), "reason": reason})
     session.commit()
     return {"ok": True, "revoked": len(devices)}
+
+
+@app.post("/v1/admin/maintenance/purge-test-data")
+def purge_admin_test_data(
+    payload: AdminPurgeTestDataRequest,
+    admin: AdminIdentity = Depends(current_admin_write),
+    session: Session = Depends(db_session),
+) -> dict:
+    """Limpeza temporaria e deliberada dos dados de clientes usados em testes."""
+    if payload.confirmation != "LIMPAR DADOS DE TESTE":
+        raise HTTPException(status_code=422, detail="Digite a frase de confirmação exatamente como apresentada.")
+
+    current_customers = session.scalar(select(func.count(Client.id))) or 0
+    if current_customers != payload.expected_customers:
+        raise HTTPException(
+            status_code=409,
+            detail="A quantidade de clientes mudou. Atualize o painel e confirme novamente.",
+        )
+
+    counts = {
+        "trello_oauth_requests": session.scalar(select(func.count(TrelloOAuthRequest.id))) or 0,
+        "activation_codes": session.scalar(select(func.count(ActivationCode.id))) or 0,
+        "device_tokens": session.scalar(select(func.count(DeviceToken.id))) or 0,
+        "monthly_usage": session.scalar(select(func.count(MonthlyUsage.id))) or 0,
+        "subscriptions": session.scalar(select(func.count(Subscription.id))) or 0,
+        "checkout_orders": session.scalar(select(func.count(CheckoutOrder.id))) or 0,
+        "account_sessions": session.scalar(select(func.count(AccountSession.id))) or 0,
+        "clients": current_customers,
+        "accounts": session.scalar(select(func.count(Account.id))) or 0,
+    }
+
+    # A ordem preserva as chaves estrangeiras. Administradores, sessoes de
+    # admin, auditoria e webhooks processados nao fazem parte da limpeza.
+    for model in (
+        TrelloOAuthRequest,
+        ActivationCode,
+        DeviceToken,
+        MonthlyUsage,
+        Subscription,
+        CheckoutOrder,
+        AccountSession,
+        Client,
+        Account,
+    ):
+        session.execute(delete(model))
+
+    add_admin_audit(
+        session,
+        admin,
+        "test_data.purged",
+        "maintenance",
+        "all_customer_data",
+        {"counts": counts, "reason": payload.reason},
+    )
+    session.commit()
+    return {"ok": True, "deleted": counts}
 
 
 @app.get("/v1/admin/audit")
