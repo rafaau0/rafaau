@@ -24,7 +24,7 @@ a = Analysis(
     ['content_planner/main.py'],
     pathex=[],
     binaries=[(str(TK_DLLS / '_tkinter.pyd'), '.'), (str(TK_DLLS / 'tcl86t.dll'), '.'), (str(TK_DLLS / 'tk86t.dll'), '.'), *OPTIONAL_FFMPEG],
-    datas=[('assets/neiva_logo.png', 'assets'), ('assets/neiva_logo.ico', 'assets'), ('assets/neiva_light.json', 'assets'), (str(TK_DATA / 'tcl8.6'), '_tcl_data'), (str(TK_DATA / 'tk8.6'), '_tk_data'), *FASTER_WHISPER_DATA, *OPTIONAL_FFMPEG_DATA],
+    datas=[('assets/neiva_logo.png', 'assets'), ('assets/neiva_logo.ico', 'assets'), ('assets/neiva_light.json', 'assets'), ('assets/davinci/rafaau_timeline.py', 'assets/davinci'), (str(TK_DATA / 'tcl8.6'), '_tcl_data'), (str(TK_DATA / 'tk8.6'), '_tk_data'), *FASTER_WHISPER_DATA, *OPTIONAL_FFMPEG_DATA],
     hiddenimports=['tkinter', 'tkinter.messagebox'],
     hookspath=['hooks'],
     hooksconfig={},

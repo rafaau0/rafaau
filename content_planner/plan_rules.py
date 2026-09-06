@@ -19,13 +19,12 @@ class PlanRules:
     max_monthly_pdfs: int | None
     trello: bool
     video: bool
-    offer_flyer: bool
 
 
 RULES = {
-    "free": PlanRules("free", "Grátis", 1, 15, 1, False, False, False),
-    "essencial": PlanRules("essencial", "Essencial", 10, None, None, True, True, True),
-    "pro": PlanRules("pro", "Pro", None, None, None, True, True, True),
+    "free": PlanRules("free", "Grátis", 1, 15, 1, False, False),
+    "essencial": PlanRules("essencial", "Essencial", 10, None, None, True, True),
+    "pro": PlanRules("pro", "Pro", None, None, None, True, True),
 }
 
 

@@ -35,7 +35,7 @@ const workflow = [
   ],
   [
     'Produza',
-    'Organize a produção e use o estúdio para trabalhar vídeos e legendas.',
+    'Organize a produção e abra o DaVinci Resolve diretamente pelo rafaau.',
   ],
   [
     'Distribua',
@@ -50,7 +50,7 @@ const plans = [
     price: '0',
     credits: 'Não incluída',
     use: 'Para conhecer o planejamento editorial.',
-    features: ['1 cliente e 15 conteúdos por mês', '1 PDF por mês', 'Calendário e dashboard', 'Sem Trello, vídeo ou encartes'],
+    features: ['1 cliente e 15 conteúdos por mês', '1 PDF por mês', 'Calendário e dashboard', 'Sem Trello ou integração DaVinci'],
   },
   {
     code: 'essencial',
@@ -58,7 +58,7 @@ const plans = [
     price: '49,90',
     credits: '20',
     use: 'Para quem analisa alguns vídeos por mês.',
-    features: ['Até 10 clientes', 'Conteúdos e PDFs ilimitados', 'Trello, vídeos e encartes', 'Uso em até 2 computadores'],
+    features: ['Até 10 clientes', 'Conteúdos e PDFs ilimitados', 'Trello e integração DaVinci', 'Uso em até 2 computadores'],
   },
   {
     code: 'pro',
@@ -66,7 +66,7 @@ const plans = [
     price: '89,90',
     credits: '80',
     use: 'Para quem produz para vários clientes ou publica toda semana.',
-    features: ['Clientes e conteúdos ilimitados', 'Trello, vídeos e encartes', 'Maior volume de IA', 'Uso em até 3 computadores'],
+    features: ['Clientes e conteúdos ilimitados', 'Trello e integração DaVinci', 'Maior volume de IA', 'Uso em até 3 computadores'],
   },
 ];
 

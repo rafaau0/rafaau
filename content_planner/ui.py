@@ -25,7 +25,8 @@ from .video_subtitles import VideoError, VideoProject, probe, render, transcribe
 from .youtube_downloader import DownloadError, download as download_youtube, duration as youtube_duration, fetch_info, is_youtube_url
 from .clip_finder import ClipSuggestion, find_suggestions
 from .clip_ai import analyze_cuts
-from .encarte_service import export_files as export_encarte_files, extract_photos, generate as generate_encarte, prepare as prepare_encarte
+from .video_editor import find_davinci, launch_davinci, validate_davinci_executable
+from .davinci_integration import install_integration, integration_status
 from .secrets import get_secret, set_secret
 from .account_manager import AccountManagerDialog
 from .account_sessions import account_secret_key, current_account
@@ -145,7 +146,6 @@ class ContentPlannerApp(ctk.CTk):
             ("Clientes", self.show_clients),
             ("Planejamento", self.show_planning),
             ("Estúdio de Vídeo", self.show_video_studio),
-            ("Encarte de Ofertas", self.show_offer_flyer),
             ("Configurações", self.show_settings),
         ]
         self.nav_buttons: list[ctk.CTkButton] = []
@@ -517,12 +517,112 @@ class ContentPlannerApp(ctk.CTk):
     def show_video_studio(self) -> None:
         if not self._require_feature("video", "Estúdio de Vídeo"):
             return
-        handlers = {
-            "Importar": self.show_youtube_downloader,
-            "Legendas": self.show_video_subtitles,
-            "Cortes": self.show_clip_finder,
-        }
-        handlers.get(self.video_studio_section, self.show_youtube_downloader)()
+        frame = self._set_active_view(
+            "Estúdio de Vídeo",
+            "Editar no DaVinci Resolve",
+            "Abra o editor instalado no computador e continue todo o trabalho diretamente nele.",
+        )
+        configured = self.db.get_setting("DAVINCI_RESOLVE_PATH")
+        executable = find_davinci(configured)
+        panel_status = integration_status()
+
+        box = ctk.CTkFrame(frame, fg_color=UI["surface"], corner_radius=12, border_width=1, border_color=UI["border"])
+        box.grid(row=0, column=0, sticky="ew", pady=(0, 14))
+        box.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(box, text="DAVINCI RESOLVE", font=font(18, "bold", heading=True)).grid(row=0, column=0, sticky="w", padx=20, pady=(20, 5))
+        status_text = f"Pronto para abrir\n{executable}" if executable else "DaVinci Resolve não encontrado neste computador."
+        status_color = UI["success"] if executable else UI["warning"]
+        ctk.CTkLabel(box, text=status_text, text_color=status_color, justify="left").grid(row=1, column=0, sticky="w", padx=20, pady=(0, 16))
+
+        actions = ctk.CTkFrame(box, fg_color="transparent")
+        actions.grid(row=2, column=0, sticky="ew", padx=20, pady=(0, 20))
+        ctk.CTkButton(
+            actions,
+            text="ABRIR DAVINCI RESOLVE",
+            command=self._launch_davinci,
+            state="normal" if executable else "disabled",
+            width=220,
+        ).pack(side="left")
+        ctk.CTkButton(
+            actions,
+            text="CONFIGURAR CAMINHO",
+            command=self.show_settings,
+            fg_color=UI["secondary"],
+            hover_color=UI["secondary_hover"],
+            text_color=UI["text"],
+        ).pack(side="left", padx=10)
+
+        integration_text = (
+            "Comando instalado. No DaVinci, abra Espaço de trabalho → Scripts → Edit → rafaau_timeline."
+            if panel_status.installed
+            else "Instale o comando para remover silêncios e criar legendas a partir da timeline atual."
+        )
+        ctk.CTkLabel(
+            box,
+            text=integration_text,
+            text_color=UI["success"] if panel_status.installed else UI["muted"],
+            justify="left",
+            wraplength=850,
+        ).grid(row=3, column=0, sticky="w", padx=20, pady=(0, 10))
+        ctk.CTkButton(
+            box,
+            text="ATUALIZAR COMANDO NO DAVINCI" if panel_status.installed else "INSTALAR COMANDO NO DAVINCI",
+            command=self._install_davinci_integration,
+            width=250,
+        ).grid(row=4, column=0, sticky="w", padx=20, pady=(0, 20))
+
+        ctk.CTkLabel(
+            frame,
+            text="O painel trabalha na timeline aberta e sempre cria uma cópia. Nesta primeira versão, use uma timeline simples com um único vídeo e seu áudio vinculado.",
+            text_color=UI["muted"],
+            justify="left",
+            wraplength=850,
+        ).grid(row=1, column=0, sticky="w")
+
+    def _install_davinci_integration(self) -> None:
+        try:
+            status = install_integration()
+        except Exception as exc:
+            self._show_error("Comando do DaVinci", str(exc))
+            return
+        self._show_info(
+            "Comando do DaVinci",
+            "Comando instalado com sucesso.\n\n"
+            "Reinicie o DaVinci Resolve e abra:\n"
+            "Espaço de trabalho → Scripts → Edit → rafaau_timeline\n\n"
+            f"Arquivo instalado em:\n{status.script_path}",
+        )
+        self.show_video_studio()
+
+    def _launch_davinci(self) -> None:
+        try:
+            executable = launch_davinci(self.db.get_setting("DAVINCI_RESOLVE_PATH"))
+            self.db.set_setting("DAVINCI_RESOLVE_PATH", str(executable))
+        except Exception as exc:
+            self._show_error("DaVinci Resolve", str(exc))
+
+    def _select_davinci(self) -> None:
+        filename = filedialog.askopenfilename(
+            title="Selecione o Resolve.exe",
+            filetypes=(("DaVinci Resolve", "Resolve.exe"), ("Executáveis", "*.exe")),
+        )
+        if not filename:
+            return
+        try:
+            executable = validate_davinci_executable(filename)
+            self.db.set_setting("DAVINCI_RESOLVE_PATH", str(executable))
+        except Exception as exc:
+            self._show_error("DaVinci Resolve", str(exc))
+            return
+        self.show_settings()
+
+    def _detect_davinci(self) -> None:
+        executable = find_davinci()
+        if executable is None:
+            self._show_warning("DaVinci Resolve", "Não encontrei o Resolve.exe nas pastas padrão de instalação.")
+            return
+        self.db.set_setting("DAVINCI_RESOLVE_PATH", str(executable))
+        self.show_settings()
 
     def _video_studio_frame(self, section: str, subtitle: str) -> ctk.CTkFrame:
         self._persist_video_controls()
@@ -661,137 +761,6 @@ class ContentPlannerApp(ctk.CTk):
             self.video_info.configure(text=f"{self.video_project.video_path.name}\nVídeo carregado no Estúdio.")
             if self.video_project.subtitles:
                 self._refresh_video_table()
-
-    def show_offer_flyer(self) -> None:
-        if not self._require_feature("offer_flyer", "Encarte de Ofertas"):
-            return
-        frame = self._set_active_view("Encarte de Ofertas", "Encarte de Ofertas", "Preencha modelos PSD com produtos, preços e fotos. Requer Adobe Photoshop instalado.")
-        self.encarte_psd = ctk.StringVar(); self.encarte_sheet = ctk.StringVar(); self.encarte_photos = ctk.StringVar(); self.encarte_output = ctk.StringVar(value=str(EXPORTS_DIR / "encartes")); self.encarte_period = ctk.StringVar()
-        fields = (("Modelo PSD", self.encarte_psd, self._pick_encarte_psd), ("Planilha de produtos", self.encarte_sheet, self._pick_encarte_sheet), ("Pasta de fotos", self.encarte_photos, self._pick_encarte_photos), ("Pasta de saída", self.encarte_output, self._pick_encarte_output))
-        for row, (label, variable, command) in enumerate(fields):
-            ctk.CTkLabel(frame, text=label, text_color=UI["text"]).grid(row=row * 2, column=0, sticky="w", pady=(5, 2))
-            line = ctk.CTkFrame(frame, fg_color="transparent"); line.grid(row=row * 2 + 1, column=0, sticky="ew", pady=(0, 7)); line.grid_columnconfigure(0, weight=1)
-            ctk.CTkEntry(line, textvariable=variable, height=36).grid(row=0, column=0, sticky="ew", padx=(0, 8))
-            ctk.CTkButton(line, text="Selecionar", width=105, fg_color=UI["secondary"], hover_color=UI["secondary_hover"], text_color=UI["text"], command=command).grid(row=0, column=1)
-        ctk.CTkLabel(frame, text="Período da oferta", text_color=UI["text"]).grid(row=8, column=0, sticky="w", pady=(5, 2))
-        ctk.CTkEntry(frame, textvariable=self.encarte_period, placeholder_text="Ex.: 03 A 06/08/2026", height=36).grid(row=9, column=0, sticky="ew", pady=(0, 9))
-        bar = ctk.CTkFrame(frame, fg_color="transparent"); bar.grid(row=10, column=0, sticky="ew", pady=(2, 9))
-        self.encarte_validate_button = ctk.CTkButton(bar, text="VALIDAR PRODUTOS", command=self._validate_encarte)
-        self.encarte_validate_button.pack(side="left")
-        self.encarte_extract_button = ctk.CTkButton(bar, text="EXTRAIR FOTOS DO PSD", fg_color=UI["warning"], command=self._extract_encarte_photos)
-        self.encarte_extract_button.pack(side="left", padx=8)
-        ctk.CTkButton(bar, text="EXPORTAR JPG / PDF", fg_color=UI["secondary"], hover_color=UI["secondary_hover"], text_color=UI["text"], command=self._export_encarte_files).pack(side="left")
-        self.encarte_generate_button = ctk.CTkButton(bar, text="GERAR ENCARTE", fg_color=UI["success"], command=self._generate_encarte)
-        self.encarte_generate_button.pack(side="right")
-        self.encarte_status = ctk.CTkLabel(frame, text="Selecione os arquivos para iniciar.", text_color=UI["muted"]); self.encarte_status.grid(row=11, column=0, sticky="w")
-        self.encarte_progress = ctk.CTkProgressBar(frame); self.encarte_progress.grid(row=12, column=0, sticky="ew", pady=(4, 10)); self.encarte_progress.set(0)
-        self.encarte_list = ctk.CTkTextbox(frame, height=235, fg_color=UI["surface"]); self.encarte_list.grid(row=13, column=0, sticky="ew")
-        self.encarte_products = []
-        self.encarte_report = None
-        self._encarte_validated_signature = None
-        for variable in (self.encarte_psd, self.encarte_sheet, self.encarte_photos, self.encarte_output):
-            variable.trace_add("write", lambda *_args: self._invalidate_encarte())
-
-    def _invalidate_encarte(self) -> None:
-        self.encarte_products = []
-        self.encarte_report = None
-        self._encarte_validated_signature = None
-        if hasattr(self, "encarte_status") and self.encarte_status.winfo_exists():
-            self.encarte_status.configure(text="Entradas alteradas. Valide novamente antes de gerar.")
-
-    def _encarte_signature(self) -> tuple:
-        values = []
-        for path in self._encarte_paths():
-            try:
-                values.append((str(path.resolve()), path.stat().st_mtime_ns if path.exists() else None))
-            except OSError:
-                values.append((str(path), None))
-        return tuple(values)
-
-    def _pick_encarte_psd(self) -> None:
-        value = filedialog.askopenfilename(filetypes=(("Photoshop", "*.psd"),));
-        if value: self.encarte_psd.set(value)
-
-    def _pick_encarte_sheet(self) -> None:
-        value = filedialog.askopenfilename(filetypes=(("Planilha Excel", "*.xlsx"),));
-        if value: self.encarte_sheet.set(value)
-
-    def _pick_encarte_photos(self) -> None:
-        value = filedialog.askdirectory();
-        if value: self.encarte_photos.set(value)
-
-    def _pick_encarte_output(self) -> None:
-        value = filedialog.askdirectory(initialdir=self.encarte_output.get() or str(EXPORTS_DIR));
-        if value: self.encarte_output.set(value)
-
-    def _encarte_paths(self) -> tuple[Path, Path, Path, Path]:
-        return tuple(Path(value.get().strip()) for value in (self.encarte_psd, self.encarte_sheet, self.encarte_photos, self.encarte_output))
-
-    def _encarte_progress_update(self, percent: int, text: str) -> None:
-        self.after(0, lambda: (self.encarte_progress.set(max(0, min(100, percent)) / 100), self.encarte_status.configure(text=text)))
-
-    def _validate_encarte(self) -> None:
-        try: paths = self._encarte_paths()
-        except Exception: self._show_warning("Encarte", "Preencha os caminhos necessários."); return
-        self.encarte_status.configure(text="Lendo planilha e procurando fotos…"); self.encarte_validate_button.configure(state="disabled")
-        def task() -> None:
-            try:
-                products, report = prepare_encarte(*paths)
-                self.after(0, lambda: self._display_encarte_validation(products, report))
-            except Exception as exc: self.after(0, lambda message=str(exc): self._show_error("Validação do encarte", message))
-            finally: self.after(0, lambda: self.encarte_validate_button.configure(state="normal"))
-        threading.Thread(target=task, daemon=True).start()
-
-    def _display_encarte_validation(self, products, report) -> None:
-        self.encarte_products = products; self.encarte_report = report; found = sum(bool(item.image) for item in products)
-        self._encarte_validated_signature = self._encarte_signature()
-        lines = [f"Produtos: {len(products)} · Fotos encontradas: {found} · Fotos faltantes: {len(products) - found}", ""]
-        lines.extend(f"{item.position:02d}. {item.description} — {item.price or 'sem preço'} — {item.image.name if item.image else 'SEM FOTO'}" for item in products)
-        if report.errors: lines.extend(["", "ERROS:", *report.errors])
-        if report.warnings: lines.extend(["", "AVISOS:", *report.warnings])
-        self.encarte_list.delete("1.0", "end"); self.encarte_list.insert("1.0", "\n".join(lines))
-        self.encarte_progress.set(1 if report.valid else 0); self.encarte_status.configure(text="Validação concluída." if report.valid else "Corrija os erros antes de gerar o encarte.")
-
-    def _generate_encarte(self) -> None:
-        if not self.encarte_products: self._validate_encarte(); self._show_warning("Encarte", "Valide os produtos e fotos antes de gerar."); return
-        if not getattr(self, "encarte_report", None) or not self.encarte_report.valid:
-            self._show_warning("Encarte", "Corrija os erros da validação antes de gerar."); return
-        if self._encarte_validated_signature != self._encarte_signature():
-            self._invalidate_encarte()
-            self._show_warning("Encarte", "Uma entrada mudou desde a validação. Valide novamente antes de gerar.")
-            return
-        psd, sheet, photos, output = self._encarte_paths()
-        self.encarte_generate_button.configure(state="disabled")
-        def task() -> None:
-            try:
-                result = generate_encarte(psd, self.encarte_products, self.encarte_period.get(), output, self._encarte_progress_update)
-                self.after(0, lambda: self._show_info("Encarte concluído", f"PSD criado em:\n{result}"))
-            except Exception as exc: self.after(0, lambda message=str(exc): self._show_error("Erro ao gerar encarte", message))
-            finally: self.after(0, lambda: self.encarte_generate_button.configure(state="normal"))
-        threading.Thread(target=task, daemon=True).start()
-
-    def _extract_encarte_photos(self) -> None:
-        psd = self.encarte_psd.get().strip(); photos = self.encarte_photos.get().strip()
-        if not psd or not photos: self._show_warning("Extrair fotos", "Selecione o PSD e a pasta de fotos."); return
-        self.encarte_extract_button.configure(state="disabled")
-        def task() -> None:
-            try:
-                exported = extract_photos(Path(psd), Path(photos), self._encarte_progress_update)
-                self.after(0, lambda: self._show_info("Fotos extraídas", f"{len(exported)} fotos salvas em:\n{photos}"))
-            except Exception as exc: self.after(0, lambda message=str(exc): self._show_error("Extrair fotos", message))
-            finally: self.after(0, lambda: self.encarte_extract_button.configure(state="normal"))
-        threading.Thread(target=task, daemon=True).start()
-
-    def _export_encarte_files(self) -> None:
-        filename = filedialog.askopenfilename(title="Selecione o encarte PSD", initialdir=self.encarte_output.get() or str(EXPORTS_DIR), filetypes=(("Photoshop", "*.psd"),))
-        if not filename: return
-        self.encarte_status.configure(text="Exportando JPG e PDF pelo Photoshop…")
-        def task() -> None:
-            try:
-                jpg, pdf = export_encarte_files(Path(filename))
-                self.after(0, lambda: self._show_info("Exportação concluída", f"JPG:\n{jpg}\n\nPDF:\n{pdf}"))
-            except Exception as exc: self.after(0, lambda message=str(exc): self._show_error("Exportar encarte", message))
-        threading.Thread(target=task, daemon=True).start()
 
     def show_clip_finder(self) -> None:
         frame = self._video_studio_frame("Cortes", "Encontre os trechos com melhor potencial no vídeo atual ou em um link do YouTube.")
@@ -1204,12 +1173,24 @@ class ContentPlannerApp(ctk.CTk):
         activate_button = ctk.CTkButton(ai_box, text="ATIVAR IA", command=activate_ai)
         activate_button.grid(row=3, column=1, sticky="e", padx=16, pady=(0, 16))
 
+        davinci_box = ctk.CTkFrame(frame, fg_color=UI["surface"], corner_radius=10, border_width=1, border_color=UI["border"])
+        davinci_box.grid(row=2, column=0, sticky="ew", pady=(14, 0)); davinci_box.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(davinci_box, text="DAVINCI RESOLVE", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, sticky="w", padx=16, pady=(16, 6))
+        configured_davinci = self.db.get_setting("DAVINCI_RESOLVE_PATH")
+        detected_davinci = find_davinci(configured_davinci)
+        davinci_status = f"Configurado: {detected_davinci}" if detected_davinci else "Resolve.exe não encontrado."
+        ctk.CTkLabel(davinci_box, text=davinci_status, text_color=UI["success"] if detected_davinci else UI["warning"], wraplength=820, justify="left").grid(row=1, column=0, sticky="w", padx=16, pady=(0, 10))
+        davinci_actions = ctk.CTkFrame(davinci_box, fg_color="transparent")
+        davinci_actions.grid(row=2, column=0, sticky="w", padx=16, pady=(0, 16))
+        ctk.CTkButton(davinci_actions, text="DETECTAR AUTOMATICAMENTE", command=self._detect_davinci).pack(side="left")
+        ctk.CTkButton(davinci_actions, text="SELECIONAR RESOLVE.EXE", command=self._select_davinci, fg_color=UI["secondary"], hover_color=UI["secondary_hover"], text_color=UI["text"]).pack(side="left", padx=8)
+
         ctk.CTkLabel(
             frame,
             text=f"Banco: {self.db.db_path}\nArquivos gerados: {EXPORTS_DIR}\nA chave OpenAI permanece somente no servidor Neiva.",
             text_color=UI["muted"],
             justify="left",
-        ).grid(row=2, column=0, sticky="w", pady=(14, 0))
+        ).grid(row=3, column=0, sticky="w", pady=(14, 0))
         self.after(50, self._load_trello_connection)
 
     def _load_trello_connection(self) -> None:
@@ -1592,7 +1573,6 @@ class ContentPlannerApp(ctk.CTk):
             "Clientes": self.show_clients,
             "Planejamento": self.show_planning,
             "Estúdio de Vídeo": self.show_video_studio,
-            "Encarte de Ofertas": self.show_offer_flyer,
             "Configurações": self.show_settings,
         }
         views.get(self.active_view, self.show_dashboard)()

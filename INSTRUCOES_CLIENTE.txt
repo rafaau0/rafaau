@@ -4,11 +4,20 @@ COMO ABRIR
 1. Abra NeivaPlanner_v1.exe.
 2. Cadastre os clientes e organize os conteúdos em Planejamento.
 3. Na própria tela Planejamento, exporte o PDF ou envie os conteúdos ao Trello.
-4. Use o Estúdio de Vídeo para importar, legendar, encontrar cortes e exportar vídeos.
+4. No Estúdio de Vídeo, instale o comando e abra o DaVinci Resolve.
+5. No DaVinci, abra Espaço de trabalho > Scripts > Edit > rafaau_timeline.
+6. Analise a timeline e crie uma nova versão sem silêncios e com SRT local. O DaVinci gratuito é suficiente.
+
+COMANDO DO DAVINCI
+- Use uma timeline simples com um único vídeo e o áudio original vinculado.
+- A timeline original nunca é alterada.
+- Na primeira legenda, o modelo de português pode precisar ser baixado.
+- Depois da geração, arraste o SRT do Media Pool ou da pasta aberta para a nova timeline.
 
 PASTAS IMPORTANTES
 - %LOCALAPPDATA%\NeivaPlanner\database: guarda clientes e conteúdos.
-- %LOCALAPPDATA%\NeivaPlanner\exports: guarda PDFs, vídeos, downloads e encartes exportados.
+- %LOCALAPPDATA%\NeivaPlanner\exports: guarda PDFs, vídeos e downloads.
+- %LOCALAPPDATA%\NeivaPlanner\davinci_integration\captions: guarda as legendas SRT geradas pelo painel.
 
 BACKUP
 Copie periodicamente toda a pasta %LOCALAPPDATA%\NeivaPlanner\database para um local seguro. Contas modernas usam subpastas accounts\<id>.

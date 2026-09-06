@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import sys
+from pathlib import Path
 
 try:
     from .logging_setup import configure_logging
@@ -9,6 +11,18 @@ except ImportError:
 
 
 def main() -> None:
+    if len(sys.argv) == 3 and sys.argv[1] == "--davinci-dialog":
+        try:
+            from .davinci_dialog import run_dialog
+        except ImportError:
+            from content_planner.davinci_dialog import run_dialog
+        raise SystemExit(run_dialog(Path(sys.argv[2])))
+    if len(sys.argv) == 3 and sys.argv[1] == "--davinci-transcribe":
+        try:
+            from .davinci_caption_worker import run_request
+        except ImportError:
+            from content_planner.davinci_caption_worker import run_request
+        raise SystemExit(run_request(Path(sys.argv[2])))
     configure_logging()
     try:
         try:

@@ -21,7 +21,6 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(rules.max_monthly_pdfs, 1)
         self.assertFalse(rules.video)
         self.assertFalse(rules.trello)
-        self.assertFalse(rules.offer_flyer)
 
     def test_new_account_receives_free_license(self) -> None:
         engine = create_engine("sqlite:///:memory:")

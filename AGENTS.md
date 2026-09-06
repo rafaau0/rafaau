@@ -6,7 +6,7 @@ Este repositório contém o produto **Neiva Planner / rafaau**, voltado a criado
 
 Há três aplicações no mesmo repositório:
 
-1. **Aplicativo desktop Windows** (`content_planner/`): mantém clientes e calendários editoriais localmente, exporta PDFs, envia planejamentos ao Trello e oferece ferramentas locais de vídeo e automação de encartes PSD.
+1. **Aplicativo desktop Windows** (`content_planner/`): mantém clientes e calendários editoriais localmente, exporta PDFs, envia planejamentos ao Trello e abre o DaVinci Resolve instalado para edição externa de vídeo.
 2. **API remota** (`ai_service/`): mantém contas, licenças, planos, dispositivos, cotas de IA e cobrança; intermedeia chamadas à OpenAI; e protege o segredo OAuth do Trello.
 3. **Site público** (`neiva-site/`): landing page, cadastro/login para checkout, redirecionamento ao Asaas, consulta do status de ativação e download do aplicativo.
 
@@ -25,10 +25,11 @@ O código usa os nomes “Neiva Planner”, “Neiva” e “rafaau” para o me
 - Faster-Whisper para transcrição local em CPU/int8.
 - FFmpeg/FFprobe para leitura, edição e renderização de vídeo.
 - yt-dlp para download autorizado de vídeos do YouTube.
-- openpyxl + rapidfuzz para planilhas e associação de fotos de encartes.
 - Requests para API Neiva, Trello e demais HTTP.
 - PyInstaller para gerar o executável Windows.
-- Adobe Photoshop, acionado via VBScript/ExtendScript, é uma dependência externa obrigatória apenas para encartes.
+- DaVinci Resolve como editor externo inicialmente suportado; o caminho de `Resolve.exe` é detectado ou salvo no SQLite local.
+
+Faster-Whisper e FFmpeg são usados pelo painel do DaVinci para transcrição local e detecção de silêncios. FFprobe, yt-dlp e outros módulos do antigo editor permanecem no código/build durante a validação, mas não são alcançáveis pela navegação atual. Não remover esse motor legado sem validar primeiro a integração externa e revisar as dependências compartilhadas.
 
 ### API
 
@@ -86,17 +87,16 @@ Desktop ── login/licença/cortes IA/OAuth Trello ─> API FastAPI
    ├── CRUD editorial ──> SQLite local por conta
    ├── credenciais ─────> cofre do Windows
    ├── cards ───────────> API REST do Trello (direto após OAuth)
-   ├── vídeo ───────────> Faster-Whisper + FFmpeg + yt-dlp
-   └── encartes ────────> Excel + Photoshop local
+   └── vídeo ───────────> DaVinci Resolve instalado no Windows
 ```
 
-O desktop possui separação parcial entre interface, persistência e serviços, mas não segue MVC estrito. `content_planner/ui.py` é um controlador/view monolítico de aproximadamente 1.500 linhas: cria telas, mantém estado, aplica limites de plano, dispara threads e coordena serviços. Banco, Trello, vídeo, PDF e encartes ficam em módulos separados.
+O desktop possui separação parcial entre interface, persistência e serviços, mas não segue MVC estrito. `content_planner/ui.py` é um controlador/view monolítico: cria telas, mantém estado, aplica limites de plano, dispara threads e coordena serviços. Banco, Trello, vídeo e PDF ficam em módulos separados.
 
 A API também é monolítica: modelos SQLAlchemy, esquemas Pydantic, autenticação, cobrança, integrações e rotas estão todos em `ai_service/app/main.py`. Não há camada de repositório, Alembic ou módulos por domínio.
 
 O site é uma landing page única. `app/page.tsx` é majoritariamente apresentação estática; os únicos fluxos com estado ficam nos dois componentes client-side.
 
-Chamadas demoradas do desktop rodam em `threading.Thread(daemon=True)` e retornam à thread do Tk por `self.after(...)`. Manter operações de rede, Whisper, FFmpeg e Photoshop fora da thread da UI.
+Chamadas demoradas do desktop rodam em `threading.Thread(daemon=True)` e retornam à thread do Tk por `self.after(...)`. Manter operações de rede, Whisper e FFmpeg fora da thread da UI.
 
 ## 5. Banco de dados
 
@@ -143,7 +143,7 @@ As tabelas são criadas no evento de startup. Três tabelas recebem migrações 
 - `content_planner/account_sessions.py`: índice de contas locais, conta ativa e tokens por conta no keyring.
 - `content_planner/account_manager.py`: modal de troca/remoção; revoga o token remoto antes de remover a sessão local.
 - `content_planner/plan_rules.py`: limites dos planos `free`, `essencial` e `pro`; plano pago de conta moderna exige confirmação online da API, enquanto ausência de conta continua sendo licença legada Pro.
-- `content_planner/ui.py`: dashboard, clientes, planejamento/calendário, estúdio de vídeo, encartes, configurações, modais e orquestração geral.
+- `content_planner/ui.py`: dashboard, clientes, planejamento/calendário, lançador do DaVinci, configurações, modais e orquestração geral. Métodos da edição interna permanecem temporariamente sem entrada de navegação.
 - `content_planner/database.py`: CRUD local e configurações.
 - `content_planner/pdf_generator.py`: PDF mensal com capa, calendário e tabela de conteúdos.
 - `content_planner/trello_auth.py`: inicia OAuth pela API, abre navegador, consulta status e lista identidade/quadros.
@@ -154,9 +154,7 @@ As tabelas são criadas no evento de startup. Três tabelas recebem migrações 
 - `content_planner/youtube_downloader.py`: metadados e download autorizado com yt-dlp.
 - `content_planner/clip_finder.py`: heurística local de cortes.
 - `content_planner/clip_ai.py`: cliente da rota remota `/v1/cuts` e validação defensiva do resultado.
-- `content_planner/encarte_service.py`: lê XLSX, associa fotos por nome/fuzzy match e coordena Photoshop.
-- `content_planner/encarte_legacy.py`: grande gerador ExtendScript herdado; ainda é dependência ativa do fluxo novo.
-- `content_planner/encarte_photo_extractor.py`: extrai camadas `GRUPOxx` do PSD como PNG.
+- `content_planner/video_editor.py`: valida, detecta e inicia `Resolve.exe` sem usar shell.
 - `content_planner/secrets.py`: keyring, com variáveis de ambiente tendo precedência.
 - `content_planner/ffmpeg_tools.py`: resolve binários empacotados antes do PATH.
 - `content_planner/logging_setup.py`: log rotativo.
@@ -179,7 +177,7 @@ As tabelas são criadas no evento de startup. Três tabelas recebem migrações 
 2. `/v1/auth/app-login` valida PBKDF2, cria/renova um `DeviceToken` e devolve token bearer + dados da conta/plano.
 3. O token e o índice de contas ficam no keyring; o desktop seleciona o SQLite específico da conta.
 4. Em inicializações seguintes, `/v1/auth/session` revalida licença e atualiza os metadados locais.
-5. Limites de clientes/posts/PDF e bloqueios de Trello/vídeo/encarte são aplicados pela UI com `PlanRules`.
+5. Limites de clientes/posts/PDF e bloqueios de Trello/vídeo são aplicados pela UI com `PlanRules`.
 
 ### Planejamento
 
@@ -196,11 +194,13 @@ Clientes e posts são CRUD local. O calendário consulta por cliente/mês. A exp
 
 ### Vídeo e cortes
 
-Um `VideoProject` permanece em memória ao alternar entre Importar, Legendas e Cortes. Vídeo local ou YouTube é validado por FFprobe. A transcrição é local com Faster-Whisper. Cortes podem usar heurística local ou enviar somente texto/timestamps à API; a API consome cota e chama a OpenAI. Legendas podem ser revisadas, exportadas ou queimadas em vídeo. FFmpeg também recorta silêncios, redimensiona e aplica zoom/movimento.
+O Estúdio de Vídeo lê `DAVINCI_RESOLVE_PATH` do SQLite local, tenta detectar `Resolve.exe` em `Program Files` e inicia o processo diretamente, sem shell. Ele também instala `assets/davinci/rafaau_timeline.py` em `%APPDATA%\Blackmagic Design\DaVinci Resolve\Support\Fusion\Scripts\Edit`; o FFmpeg é copiado para `%LOCALAPPDATA%\NeivaPlanner\davinci_integration` e referenciado por um `config.json` sem segredos. Não usar `fusion.UIManager` nesse script: ele retorna `None` no Resolve gratuito e dispara a oferta do Studio. O comando chama o próprio aplicativo com `--davinci-dialog` para abrir confirmações externas no tema do rafaau; `ctypes.windll.user32.MessageBoxW` permanece apenas como fallback compatível com a edição gratuita.
 
-### Encartes
+Dentro do Resolve, o comando usa a API oficial de scripting. Ele só aceita uma timeline simples com um vídeo, um áudio vinculado do mesmo arquivo, fonte acessível, recortes A/V alinhados e sem retiming. O FFmpeg executa `silencedetect` somente no intervalo usado pelo clipe. Após duas confirmações nativas, a aplicação cria uma timeline vazia e anexa todos os trechos não silenciosos sequencialmente por `MediaPool.AppendToTimeline`, sem `recordFrame`. Os frames de origem são calculados com `TimelineItem.GetLeftOffset(False)`: não reutilizar `GetSourceStartFrame`, pois o Resolve pode devolvê-lo em timecode absoluto e fazer a cópia apontar para um trecho errado. A original não é modificada. Timelines complexas são deliberadamente bloqueadas até existir uma estratégia validada para preservar composição, efeitos, transições e múltiplas faixas.
 
-O serviço lê a primeira planilha XLSX, exige colunas de descrição e preço, limita a 24 produtos, associa imagens e valida arquivos. Photoshop é automatizado por `cscript.exe` + ExtendScript para preencher texto, extrair fotos e exportar JPG/PDF.
+As legendas não usam `Timeline.CreateSubtitlesFromAudio`, pois a matriz oficial limita transcrição automática ao Resolve Studio. O painel chama o próprio executável com `--davinci-transcribe <request.json>`; `content_planner/davinci_caption_worker.py` usa Faster-Whisper local, remapeia palavras de acordo com os trechos mantidos e grava SRT sob `%LOCALAPPDATA%\NeivaPlanner\davinci_integration\captions`. O painel tenta `MediaPool.ImportMedia`; a API oficial não oferece inserção direta de SRT em faixa de subtitle, portanto o usuário precisa arrastar o item/arquivo para a nova timeline. Na primeira execução, o modelo `small` pode ser baixado para o cache do usuário.
+
+Arquivos principais desse fluxo: `content_planner/davinci_integration.py` (instalação), `content_planner/davinci_caption_worker.py` (transcrição/remapeamento), `content_planner/davinci_dialog.py` (janelas externas temáticas), `content_planner/video_editor.py` (detecção/abertura), `assets/davinci/rafaau_timeline.py` (painel e processamento no Resolve) e `NeivaPlanner.spec` (empacotamento). O restante do motor anterior baseado em `VideoProject`, FFmpeg e yt-dlp permanece temporariamente no código, sem acesso pela navegação.
 
 ### Site, checkout e ativação
 
@@ -228,7 +228,7 @@ Rotas reais da API:
 - `POST /v1/admin/clients`
 - `POST /v1/admin/billing/subscriptions`
 
-Integrações externas: OpenAI Responses API, Asaas, Trello REST/OAuth 1.0, YouTube via yt-dlp, Adobe Photoshop via COM/ExtendScript, GitHub Releases para download e Cloudflare/OpenAI Sites para hospedagem web.
+Integrações externas: OpenAI Responses API, Asaas, Trello REST/OAuth 1.0, YouTube via yt-dlp, GitHub Releases para download e Cloudflare/OpenAI Sites para hospedagem web.
 
 ## 9. Autenticação, autorização e segurança
 
@@ -316,9 +316,9 @@ npm run build
 npm run start
 ```
 
-O workflow `.github/workflows/quality.yml` instala dependências, executa `pip check`, `pip-audit`, testes Python, lint/build do site, baixa/verifica FFmpeg e gera o EXE. Tags estáveis exatas (`vX.Y.Z`) exigem certificado configurado, assinam e validam o executável antes da release oficial. Tags SemVer com sufixo (`vX.Y.Z-sufixo`, como `-test.1`, `-beta.1` ou `-rc.1`) podem publicar uma prerelease não assinada. Tags `v*` fora desses formatos falham. O site usa a release estável mais recente; o desktop não possui atualizador automático.
+O workflow `.github/workflows/quality.yml` instala dependências, executa `pip check`, `pip-audit`, testes Python, lint/build do site, baixa/verifica FFmpeg e gera o EXE. Tags estáveis exatas (`vX.Y.Z`) exigem certificado configurado, assinam e validam o executável antes da release oficial. Tags SemVer com sufixo (`vX.Y.Z-sufixo`, como `-test.1`, `-beta.1` ou `-rc.1`) podem publicar uma prerelease não assinada. Tags `v*` fora desses formatos falham. Atualmente, o botão de download do site está temporariamente fixado na prerelease não assinada `v1.1.1-test.1` para testes do pipeline; antes de distribuir uma versão oficial, restaurar `neiva-site/app/page.tsx` para `releases/latest/download/rafaau_v1.exe`. O desktop não possui atualizador automático.
 
-Estado verificado diretamente em 2026-09-05 após a correção do baseline: 38 testes Python passam; `npm run lint` e `npm run build` passam para o código publicado do site. Os componentes UI de scaffold não utilizados ficam fora do escopo do lint da aplicação. O build PyInstaller foi repetido com sucesso e incluiu FFmpeg, FFprobe e `content_planner.paths`; o artefato local permanece sem assinatura por não haver certificado no workspace.
+Estado verificado diretamente em 2026-09-05: 41 testes Python passam; `npm run lint` e `npm run build` passam para o código publicado do site. Os componentes UI de scaffold não utilizados ficam fora do escopo do lint da aplicação. O build PyInstaller anterior incluiu FFmpeg, FFprobe e `content_planner.paths`; o artefato local permanece sem assinatura por não haver certificado no workspace.
 
 ## 13. Regras para modificações futuras
 
@@ -329,12 +329,12 @@ Estado verificado diretamente em 2026-09-05 após a correção do baseline: 38 t
 5. Ao alterar persistência, preservar isolamento por conta, migração de instalações legadas e bancos já existentes.
 6. Ao alterar Trello, preservar entrega única do token, vínculo da requisição ao cliente e idempotência de listas/cards.
 7. Ao alterar vídeo, validar arquivo local e build PyInstaller, disponibilidade de FFmpeg/FFprobe, vídeo sem áudio, caminhos Windows e custo de CPU/RAM.
-8. Ao alterar encartes, testar com Photoshop real e um PSD com a nomenclatura esperada (`BOX_XX`, `DESCRICAO_XX`, `VALOR/PRECO_XX`, `DATA_01`, `GRUPOXX`).
-9. Executar testes Python após mudanças. Se tocar o site, executar lint e build, distinguindo erros preexistentes do scaffold.
-10. Não assumir que texto do site corresponde ao produto: comparar qualquer promessa comercial com desktop/API.
-11. Não remover `encarte_legacy.py` pelo nome: apesar de “legacy”, ele é chamado pelo serviço atual.
-12. Não atualizar FFmpeg sem atualizar URL, versão, SHA-256, licença e `BUILD_INFO.txt` de forma coerente.
-13. Não enfraquecer a separação de releases: stable `vX.Y.Z` deve continuar exigindo assinatura válida; somente tags com sufixo podem ser publicadas como prerelease sem assinatura.
+   Durante a migração para editor externo, validar também detecção manual/automática e abertura do DaVinci Resolve real.
+8. Executar testes Python após mudanças. Se tocar o site, executar lint e build, distinguindo erros preexistentes do scaffold.
+9. Não assumir que texto do site corresponde ao produto: comparar qualquer promessa comercial com desktop/API.
+10. Não atualizar FFmpeg sem atualizar URL, versão, SHA-256, licença e `BUILD_INFO.txt` de forma coerente.
+11. Não enfraquecer a separação de releases: stable `vX.Y.Z` deve continuar exigindo assinatura válida; somente tags com sufixo podem ser publicadas como prerelease sem assinatura.
+12. O link direto para `v1.1.1-test.1` no site é temporário. Não manter uma prerelease não assinada como download público ao encerrar os testes; restaurar o canal `releases/latest` junto da publicação stable assinada.
 
 ## 14. Partes sensíveis
 
@@ -343,7 +343,6 @@ Estado verificado diretamente em 2026-09-05 após a correção do baseline: 38 t
 - `content_planner/account_sessions.py` e `secrets.py`: identidade ativa e todos os tokens locais.
 - `content_planner/ui.py`: estado em memória e callbacks assíncronos; uma mudança visual pode alterar regra de produto.
 - `content_planner/video_subtitles.py` e `silence_editor.py`: filtros FFmpeg complexos, sincronização A/V e alto custo computacional.
-- `content_planner/encarte_legacy.py`: ExtendScript extenso e dependente da estrutura interna do PSD.
 - `NeivaPlanner.spec`, runtime hook Tk e assets FFmpeg: qualquer omissão pode funcionar em desenvolvimento e falhar somente no EXE.
 - Webhook e `activate_paid_order`: devem continuar idempotentes; nunca ativar licença apenas pelo retorno do navegador.
 
@@ -393,10 +392,10 @@ Esta seção descreve o estado anterior às correções iniciadas após o relat�
 - Licenças legadas sem `SavedAccount` recebem regras Pro por compatibilidade.
 - A API cria automaticamente uma licença `free` para cada conta; uma licença paga reutiliza esse mesmo `Client` quando o webhook confirma o pedido.
 - O fluxo confiável de pagamento é o webhook, não o redirect do browser.
-- O plano grátis possui cota de IA zero e não pode iniciar OAuth Trello na API; vídeo/encarte/Trello também são ocultados pela UI.
+- O plano grátis possui cota de IA zero e não pode iniciar OAuth Trello na API; vídeo e Trello também são ocultados pela UI.
 - A primeira transcrição pode baixar o modelo Whisper no cache do usuário e parecer lenta; isso não está empacotado como asset.
 - O executável inclui FFmpeg somente se os binários existirem em `assets/ffmpeg` na hora do build. No Git ficam apenas licença e informações do build.
-- Photoshop não é biblioteca Python: a automação depende de Windows, instalação Adobe e convenções internas do PSD.
+- A interface de vídeo suporta somente DaVinci Resolve. O painel atua sobre a timeline aberta, mas a primeira versão aceita apenas um vídeo com um áudio do mesmo arquivo, vinculado/alinhado e sem retiming; sempre cria nova timeline. As legendas locais funcionam sem Studio, mas o SRT precisa ser arrastado para a timeline porque a API não expõe inserção direta em faixa de subtitle.
 - Informações não determinadas pelo repositório: infraestrutura exata/deploy da API, configuração real de produção no Render/Asaas/Trello/OpenAI, processo de assinatura do EXE, origem/validação dos depoimentos do site e existência de monitoramento/backups remotos.
 
 ## 17. Baseline histórico de QA fornecido para o commit original
@@ -504,7 +503,8 @@ O código foi alterado para tratar os 51 achados do relatório. O histórico da 
 - Checkout/IA (`QA-008` a `QA-014`): `Idempotency-Key` do navegador até o Asaas, validação de respostas externas, timeout OAuth, validação forte de cadastro, reserva atômica/devolução de crédito e normalização semântica dos cortes retornados pela OpenAI.
 - Isolamento/dados (`QA-015` a `QA-018`): segredos Trello por conta, banco legado não é entregue automaticamente a conta moderna, seletores usam ID mesmo com homônimos, validação no repositório e `operation_id` único para reenvio idempotente de criação.
 - PDF (`QA-019` a `QA-021`): detalhes completos, células com `Paragraph` para wrap/entidades e nomes de saída com cliente/timestamp; escrita usa arquivo temporário e substituição final.
-- Encartes (`QA-022` a `QA-027`): assinatura da origem validada antes de gerar, limite acima de 24 rejeitado, parser monetário, duplicatas avisadas, foto ausente bloqueada, fuzzy ambíguo exige confirmação e falha Photoshop remove saída parcial. O ExtendScript agora insere a foto no grupo esperado.
+- Encartes (`QA-022` a `QA-027`): as correções foram implementadas inicialmente, mas a funcionalidade completa, seus módulos e dependências foram removidos posteriormente do produto.
+- Editor de vídeo: além da detecção/configuração e abertura segura do DaVinci, existe um instalador de painel. O painel analisa silêncios com FFmpeg, reconstrói uma nova timeline pelos trechos falados e chama um worker local Faster-Whisper para gerar SRT sincronizado sem exigir Resolve Studio. Confirmações e resultados são exibidos por `davinci_dialog.py` em uma janela externa com o tema do aplicativo; a caixa nativa é fallback. O motor anterior permanece parcialmente sem navegação.
 - Trello (`QA-028` a `QA-030`): marcador inclui origem conta/banco, cache e vínculo do card incluem o quadro, registros antigos são reconciliados pelo marcador e criação de card possui trava compartilhada dentro do processo. A garantia absoluta entre dois processos ainda depende de validação/estratégia no provedor.
 - Vídeo (`QA-031` a `QA-043`): edição invalida palavras antigas, segmentação usa timestamps reais, jobs são vinculados ao projeto/origem, análise de silêncio é consumida e restaurada só ao falhar, writer único, destinos únicos, exportação sem legenda, flag mestre de efeitos, timeouts/limpeza, preservação de palavras/configurações, validação de margens, filter script para comandos grandes e temporário ASS opaco para caminhos com apóstrofo.
 - Distribuição/site (`QA-044` a `QA-051`): release com tag falha sem certificado e valida Authenticode; mensagens de API são normalizadas; fetch/polling possuem timeout/status; a oferta agora é somente mensal sem trial; foram removidos depoimentos/métrica/placeholders e ações sociais/recuperação falsas; lint/build do site entraram no CI.
@@ -513,7 +513,7 @@ O código foi alterado para tratar os 51 achados do relatório. O histórico da 
 ### Estado dos testes
 
 - `python -m compileall -q content_planner ai_service tests`: passou.
-- `.venv\Scripts\python.exe -m unittest discover -s tests -v`: 38/38 passaram.
+- `.venv\Scripts\python.exe -m unittest discover -s tests -q`: 50/50 passaram em 2026-09-06.
 - `npm run lint` em `neiva-site`: passou para `app/` e componentes publicados.
 - `npm run build` em `neiva-site`: passou; Vinext ainda informa apenas que a classificação estática da rota é desconhecida.
 - `git diff --check`: passou.
@@ -523,10 +523,10 @@ O código foi alterado para tratar os 51 achados do relatório. O histórico da 
 - Executar Asaas sandbox ponta a ponta, incluindo compra, duplicação, vencimento, cancelamento, estorno, chargeback, renovação e eventos simultâneos em PostgreSQL/múltiplos workers.
 - Executar OAuth/criação concorrente em um quadro Trello descartável. A trava de cards é por processo; o Trello não oferece idempotency key equivalente neste fluxo.
 - Validar a resposta e a qualidade editorial com OpenAI real, sem usar credencial de produção.
-- Validar encarte no Photoshop real com o PSD oficial. Nomes esperados incluem `BOX_XX`, `DESCRICAO_XX`, `VALOR/PRECO_XX`, `DATA_01` e `GRUPOXX`/`GRUPO_XX`.
+- Validar em uma instalação real do DaVinci Resolve gratuito: instalação/atualização do painel, abertura/foco das janelas temáticas, fallback nativo, menu Scripts, download inicial do Whisper `small`, importação de SRT no Media Pool, arraste para subtitle track, mídia offline, vídeo longo, áudio sem fala, limites de frame em 23.976/29.97 e criação A/V por `CreateTimelineFromClips`.
 - Fazer inspeção visual integral dos PDFs e vídeos, incluindo mídia longa/4K, áudio ruim, disco cheio e encerramento no meio do job.
 - Testar o novo EXE em Windows limpo e configurar certificado real nos secrets `SIGNING_CERTIFICATE_BASE64` e `SIGNING_CERTIFICATE_PASSWORD` antes de criar uma tag.
 - Migrar a API para migrations versionadas (Alembic). `create_all` e ALTERs aditivos continuam sendo limitação arquitetural.
 - Definir política operacional de suporte/recuperação de senha, backup/restauração, retenção/carência de assinatura e atualização/desinstalação. Os botões falsos foram removidos, mas um canal real de recuperação ainda é requisito operacional para clientes.
 
-Até as integrações acima serem exercitadas em ambientes descartáveis, tratar Asaas, Trello e Photoshop como candidatos a release, não como fluxos certificados para produção.
+Até as integrações acima serem exercitadas em ambientes descartáveis, tratar Asaas e Trello como candidatos a release, não como fluxos certificados para produção.

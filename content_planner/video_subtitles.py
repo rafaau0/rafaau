@@ -117,31 +117,22 @@ def write_captions(subtitles: list[Subtitle], output: Path, vtt: bool = False) -
     output.write_text("\n".join(lines), encoding="utf-8")
 
 
-def transcribe(video: Path, model_name: str, max_words: int, progress=None) -> list[Subtitle]:
+def _transcribe_audio(audio: Path, model_name: str, max_words: int, progress=None) -> list[Subtitle]:
     try:
         from faster_whisper import WhisperModel
     except ImportError as exc:
         raise VideoError("A biblioteca faster-whisper não está instalada. Instale as dependências do Neiva Planner.") from exc
-    with tempfile.TemporaryDirectory(prefix="neiva_legendas_") as folder:
-        audio = Path(folder) / "audio.wav"
-        if progress: progress("Extraindo áudio…", 5)
-        try:
-            result = subprocess.run([_ffmpeg(), "-y", "-i", str(video), "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", str(audio)], capture_output=True, text=True, timeout=PROCESS_TIMEOUT_SECONDS)
-        except subprocess.TimeoutExpired as exc:
-            raise VideoError("A extração de áudio excedeu o tempo limite de 2 horas.") from exc
-        if result.returncode:
-            raise VideoError(result.stderr[-1200:] or "Não foi possível extrair o áudio do vídeo.")
-        if progress: progress("Carregando modelo de transcrição…", 12)
-        try:
-            # CPU/int8 é a opção mais estável no Windows e funciona mesmo sem GPU NVIDIA.
-            # O carregamento inicial baixa o modelo escolhido para o cache local do usuário.
-            model = WhisperModel(model_name, device="cpu", compute_type="int8")
-            if progress: progress("Modelo pronto. Transcrevendo fala…", 30)
-            segments, _ = model.transcribe(str(audio), language="pt", word_timestamps=True, vad_filter=True, beam_size=5)
-            original = [Subtitle(segment.start, segment.end, segment.text.strip(), [Word(w.word.strip(),w.start,w.end) for w in (segment.words or []) if w.word.strip()]) for segment in segments if segment.text.strip()]
-        except Exception as exc:
-            logging.exception("Erro na transcrição de %s", video)
-            raise VideoError(f"Falha durante a transcrição: {exc}") from exc
+    if progress: progress("Carregando modelo de transcrição…", 12)
+    try:
+        # CPU/int8 é a opção mais estável no Windows e funciona mesmo sem GPU NVIDIA.
+        # O carregamento inicial baixa o modelo escolhido para o cache local do usuário.
+        model = WhisperModel(model_name, device="cpu", compute_type="int8")
+        if progress: progress("Modelo pronto. Transcrevendo fala…", 30)
+        segments, _ = model.transcribe(str(audio), language="pt", word_timestamps=True, vad_filter=True, beam_size=5)
+        original = [Subtitle(segment.start, segment.end, segment.text.strip(), [Word(w.word.strip(),w.start,w.end) for w in (segment.words or []) if w.word.strip()]) for segment in segments if segment.text.strip()]
+    except Exception as exc:
+        logging.exception("Erro na transcrição de %s", audio)
+        raise VideoError(f"Falha durante a transcrição: {exc}") from exc
     result: list[Subtitle] = []
     for subtitle in original:
         if subtitle.words:
@@ -157,6 +148,38 @@ def transcribe(video: Path, model_name: str, max_words: int, progress=None) -> l
             result.append(Subtitle(subtitle.start + duration * ratio_start, subtitle.start + duration * ratio_end, " ".join(part)))
     if progress: progress("Legendas prontas para revisão.", 100)
     return result
+
+
+def transcribe_interval(
+    video: Path,
+    model_name: str,
+    max_words: int,
+    start_seconds: float = 0.0,
+    duration_seconds: float | None = None,
+    progress=None,
+) -> list[Subtitle]:
+    if start_seconds < 0 or (duration_seconds is not None and duration_seconds <= 0):
+        raise VideoError("O intervalo solicitado para transcrição é inválido.")
+    with tempfile.TemporaryDirectory(prefix="neiva_legendas_") as folder:
+        audio = Path(folder) / "audio.wav"
+        command = [_ffmpeg(), "-y"]
+        if start_seconds:
+            command.extend(["-ss", f"{start_seconds:.6f}"])
+        if duration_seconds is not None:
+            command.extend(["-t", f"{duration_seconds:.6f}"])
+        command.extend(["-i", str(video), "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", str(audio)])
+        if progress: progress("Extraindo áudio…", 5)
+        try:
+            result = subprocess.run(command, capture_output=True, text=True, timeout=PROCESS_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired as exc:
+            raise VideoError("A extração de áudio excedeu o tempo limite de 2 horas.") from exc
+        if result.returncode:
+            raise VideoError(result.stderr[-1200:] or "Não foi possível extrair o áudio do vídeo.")
+        return _transcribe_audio(audio, model_name, max_words, progress)
+
+
+def transcribe(video: Path, model_name: str, max_words: int, progress=None) -> list[Subtitle]:
+    return transcribe_interval(video, model_name, max_words, progress=progress)
 
 
 def render(project: VideoProject, output: Path, video_format: str, fit_mode: str, progress=None, burn_subtitles: bool = True) -> None:
