@@ -1,5 +1,9 @@
 # API rafaau
 
+## Rascunhos de contratos
+
+`POST /v1/contracts/draft` usa a sessão do aplicativo, com cota própria em `contract_ai_usage`. Configure `CONTRACT_AI_MONTHLY_LIMIT` (padrão `0`, desabilitado), `OPENAI_API_KEY` e opcionalmente `CONTRACT_AI_MODEL`. O corpo aceita apenas `kind`, `scope` e `terms`; retorna título, conteúdo e status `Rascunho`. Não recebe IDs do CRM nem armazena os contratos locais. Consulte `docs/CRM.md` na raiz para fluxo, privacidade e testes.
+
 Serviço FastAPI separado do aplicativo desktop. Ele mantém contas, licenças, dispositivos, cotas, assinaturas e o estado temporário do OAuth do Trello. Também intermedeia a seleção de cortes pela OpenAI. Clientes e conteúdos editoriais não são sincronizados aqui: permanecem no SQLite local do desktop.
 
 ## Configuração

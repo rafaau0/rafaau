@@ -91,6 +91,8 @@ class Database:
         self._migrate_legacy_database()
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.initialize()
+        from .crm import migrate
+        migrate(self)
 
     def _migrate_legacy_database(self) -> None:
         """Preserva bancos de versões portáteis anteriores ao mudar para LocalAppData."""
@@ -274,6 +276,9 @@ class Database:
             )
 
     def delete_client(self, client_id: int) -> None:
+        with self.connect() as conn:
+            if conn.execute('SELECT 1 FROM crm_charges WHERE client_id=? LIMIT 1', (client_id,)).fetchone():
+                raise ValueError('Cliente com histórico financeiro: altere a situação para Arquivado para preservar os registros.')
         attachments = [contract.attachment_path for contract in self.list_contracts(client_id) if contract.attachment_path]
         with self.connect() as conn:
             conn.execute("DELETE FROM clientes WHERE id=?", (client_id,))
@@ -331,7 +336,12 @@ class Database:
             raise ValueError("Contract id is required for update.")
         self._validate_contract(contract)
         previous = self.get_contract(contract.id)
+        if previous is None or previous.client_id != contract.client_id:
+            raise ValueError("Contrato indisponível para este cliente.")
         with self.connect() as conn:
+            metadata = conn.execute('SELECT revision FROM crm_documents WHERE contract_id=?', (contract.id,)).fetchone()
+            if metadata:
+                raise ValueError('Use o editor versionado para alterar este contrato.')
             conn.execute(
                 """
                 UPDATE contracts
@@ -366,6 +376,10 @@ class Database:
         if not contract:
             return
         with self.connect() as conn:
+            if conn.execute('SELECT 1 FROM crm_charges WHERE contract_id=?', (contract_id,)).fetchone():
+                raise ValueError('Contrato com financeiro vinculado: arquive para preservar o histórico.')
+            if conn.execute("SELECT 1 FROM crm_documents WHERE contract_id=? AND document_status<>'Rascunho'", (contract_id,)).fetchone():
+                raise ValueError('Somente rascunhos podem ser excluídos. Arquive o documento.')
             conn.execute("DELETE FROM contracts WHERE id=?", (contract_id,))
         if contract.attachment_path:
             self._delete_managed_attachment(contract.attachment_path)
@@ -546,6 +560,7 @@ class Database:
                 (today.isoformat(), (today + timedelta(days=7)).isoformat(), *params),
             ).fetchall()
             contracts = conn.execute("SELECT * FROM contracts WHERE 1=1" + scope + " ORDER BY end_date,id", params).fetchall()
+            billing = dict(conn.execute('SELECT contract_id,billing FROM crm_documents').fetchall())
         clients = {c.id: c for c in self.search_clients() if client_id is None or c.id == client_id}
         current = [self._row_to_contract(r) for r in contracts if r['status'] == 'Ativo'
                    and (not r['start_date'] or r['start_date'] <= today.isoformat())
@@ -555,7 +570,7 @@ class Database:
         return dict(counts=counts, clients=clients,
                     priorities=[self._row_to_post(r) for r in priorities],
                     upcoming=[self._row_to_post(r) for r in upcoming], contracts=current, alerts=alerts,
-                    revenue=sum(c.value_cents for c in current if clients[c.client_id].status == 'Ativo'))
+                    revenue=sum(c.value_cents for c in current if clients[c.client_id].status in {'Ativo','Recorrente'} and billing.get(c.id,'Mensal')=='Mensal'))
 
     def dashboard_stats(self) -> dict[str, int]:
         today = date.today()
@@ -567,7 +582,7 @@ class Database:
             "posts": sum(counts.values()),
             "pending": counts.get("Pendente", 0),
             "done": counts.get("Concluído", 0),
-            "active_clients": sum(c.status == "Ativo" for c in data["clients"].values()),
+            "active_clients": sum(c.status in {"Ativo","Recorrente"} for c in data["clients"].values()),
             "active_contracts": len(data["contracts"]),
             "expiring_contracts": sum(c.end_date >= today.isoformat() for c in data["alerts"]),
             "expired_contracts": sum(c.end_date < today.isoformat() for c in data["alerts"]),
@@ -603,7 +618,7 @@ class Database:
     def _validate_client(client: Client) -> None:
         if not client.name.strip():
             raise ValueError("Nome do cliente é obrigatório.")
-        if client.status not in {"Ativo", "Inativo"}:
+        if client.status not in {"Lead", "Ativo", "Recorrente", "Inativo", "Arquivado"}:
             raise ValueError("Status do cliente inválido.")
 
     @staticmethod

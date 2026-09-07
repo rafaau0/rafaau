@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import uuid
+from datetime import date
 from pathlib import Path
 from tkinter import filedialog, messagebox
 
@@ -20,9 +21,10 @@ from .client_management import (
 from .database import Client, Contract
 from .design_system import COLORS as UI, RADIUS, font, secondary_button
 from .form_modal import FormModal
+from .crm_view import CRMMixin
 
 
-class ClientManagementMixin:
+class ClientManagementMixin(CRMMixin):
     """Telas de cadastro, perfil e contratos usadas pelo aplicativo principal."""
 
     def show_clients(self) -> None:
@@ -77,8 +79,8 @@ class ClientManagementMixin:
 
         for row, client in enumerate(clients):
             contracts = self.db.list_contracts(client.id) if client.id else []
-            active_contracts = [item for item in contracts if contract_display_status(item.status, item.end_date) in {"Ativo", "Vence em breve"}]
-            revenue = sum(item.value_cents for item in active_contracts)
+            active_contracts = [item for item in contracts if contract_display_status(item.status, item.end_date) in {"Ativo", "Vence em breve"} and (not item.start_date or item.start_date <= date.today().isoformat())]
+            revenue = sum(item.value_cents for item in active_contracts if client.status in {'Ativo','Recorrente'} and self.crm.document(client.id,item.id)['billing']=='Mensal')
             item = ctk.CTkFrame(parent, fg_color=UI["surface"], corner_radius=RADIUS["md"], border_width=1, border_color=UI["border"])
             item.grid(row=row, column=0, sticky="ew", pady=6)
             item.grid_columnconfigure(0, weight=1)
@@ -162,150 +164,6 @@ class ClientManagementMixin:
 
         modal.actions(save)
 
-    def _open_client_profile(self, client: Client) -> None:
-        if client.id is None:
-            return
-        fresh = self.db.get_client(client.id)
-        if fresh is None:
-            self._show_warning("Cliente", "Este cliente não existe mais.")
-            self.show_clients()
-            return
-        modal = FormModal(self, fresh.name, width=860, height=760)
-
-        status_color = UI["success"] if fresh.status == "Ativo" else UI["muted"]
-        ctk.CTkLabel(modal.body, text=fresh.status.upper(), text_color=status_color, font=font(10, "bold")).pack(anchor="w", pady=(0, 12))
-        info = ctk.CTkFrame(modal.body, fg_color=UI["surface"], corner_radius=RADIUS["md"], border_width=1, border_color=UI["border"])
-        info.pack(fill="x", pady=(0, 14))
-        details = [
-            ("Empresa", fresh.company_name), ("CPF / CNPJ", fresh.document),
-            ("Contato", fresh.contact_name), ("E-mail", fresh.email),
-            ("Telefone", fresh.phone), ("Endereço", fresh.address),
-            ("Nicho", fresh.niche), ("Instagram", fresh.instagram),
-            ("Frequência", fresh.posting_frequency),
-        ]
-        for index, (label, value) in enumerate(details):
-            row, column = divmod(index, 2)
-            info.grid_columnconfigure(column, weight=1)
-            cell = ctk.CTkFrame(info, fg_color="transparent")
-            cell.grid(row=row, column=column, sticky="ew", padx=16, pady=10)
-            ctk.CTkLabel(cell, text=label.upper(), text_color=UI["muted"], font=font(9, "bold")).pack(anchor="w")
-            ctk.CTkLabel(cell, text=value or "—", text_color=UI["text"], font=font(12), wraplength=350, justify="left").pack(anchor="w", pady=(2, 0))
-
-        if fresh.objective or fresh.notes:
-            ctk.CTkLabel(
-                modal.body,
-                text="\n".join(part for part in (f"Objetivo: {fresh.objective}" if fresh.objective else "", f"Observações: {fresh.notes}" if fresh.notes else "") if part),
-                text_color=UI["muted"], justify="left", wraplength=780,
-            ).pack(anchor="w", pady=(0, 14))
-
-        header = ctk.CTkFrame(modal.body, fg_color="transparent")
-        header.pack(fill="x", pady=(6, 8))
-        ctk.CTkLabel(header, text="CONTRATOS", text_color=UI["text"], font=font(13, "bold")).pack(side="left")
-        ctk.CTkButton(
-            header, text="Novo contrato", width=130,
-            command=lambda: (modal.destroy(), self._open_contract_modal(fresh)),
-        ).pack(side="right")
-
-        contracts = self.db.list_contracts(fresh.id)
-        if not contracts:
-            ctk.CTkLabel(modal.body, text="Nenhum contrato cadastrado.", text_color=UI["muted"]).pack(anchor="w", pady=12)
-        for contract in contracts:
-            display_status = contract_display_status(contract.status, contract.end_date)
-            contract_box = ctk.CTkFrame(modal.body, fg_color=UI["surface"], corner_radius=RADIUS["md"], border_width=1, border_color=UI["border"])
-            contract_box.pack(fill="x", pady=5)
-            contract_box.grid_columnconfigure(0, weight=1)
-            ctk.CTkLabel(contract_box, text=contract.title, text_color=UI["text"], font=font(14, "bold")).grid(row=0, column=0, sticky="w", padx=14, pady=(10, 2))
-            ctk.CTkLabel(
-                contract_box,
-                text=f"{format_money(contract.value_cents)}/mês  ·  {format_date_br(contract.start_date)} até {format_date_br(contract.end_date)}  ·  {display_status}",
-                text_color=UI["warning"] if display_status in {"Vencido", "Vence em breve"} else UI["muted"],
-                font=font(11, "bold"),
-            ).grid(row=1, column=0, sticky="w", padx=14, pady=(0, 10))
-            actions = ctk.CTkFrame(contract_box, fg_color="transparent")
-            actions.grid(row=0, column=1, rowspan=2, padx=10, pady=8)
-            if contract.attachment_path:
-                ctk.CTkButton(actions, text="Abrir PDF", width=88, command=lambda c=contract: self._open_contract_attachment(c), **secondary_button()).pack(side="left", padx=3)
-            ctk.CTkButton(actions, text="Editar", width=78, command=lambda c=contract: (modal.destroy(), self._open_contract_modal(fresh, c)), **secondary_button()).pack(side="left", padx=3)
-            ctk.CTkButton(actions, text="Excluir", width=78, fg_color=UI["error"], hover_color="#972C3A", command=lambda c=contract: self._delete_contract(c, modal)).pack(side="left", padx=3)
-
-        footer = ctk.CTkFrame(modal.body, fg_color="transparent")
-        footer.pack(fill="x", pady=(18, 0))
-        ctk.CTkButton(footer, text="Excluir cliente", width=120, fg_color=UI["error"], hover_color="#972C3A", command=lambda: (modal.destroy(), self._delete_client(fresh))).pack(side="left")
-        ctk.CTkButton(footer, text="Fechar", width=100, command=modal.destroy, **secondary_button()).pack(side="right", padx=(8, 0))
-        ctk.CTkButton(footer, text="Editar cadastro", width=130, command=lambda: (modal.destroy(), self._open_client_modal(fresh))).pack(side="right")
-
-    def _open_contract_modal(self, client: Client, contract: Contract | None = None) -> None:
-        if client.id is None:
-            return
-        modal = FormModal(self, "Contrato", width=680, height=760)
-        title = modal.entry("Título do contrato", contract.title if contract else "Prestação de serviços")
-        description = modal.text("Descrição / escopo", contract.description if contract else "", height=90)
-        value = modal.entry("Valor mensal", format_money(contract.value_cents) if contract else "")
-        start_date = modal.entry("Data de início (DD/MM/AAAA)", format_date_br(contract.start_date) if contract else "")
-        end_date = modal.entry("Data final (DD/MM/AAAA)", format_date_br(contract.end_date) if contract else "")
-        due_day = modal.entry("Dia de vencimento (1 a 31)", str(contract.due_day) if contract and contract.due_day else "")
-        status = modal.option("Situação", CONTRACT_STATUSES, contract.status if contract else "Rascunho")
-        notes = modal.text("Observações", contract.notes if contract else "", height=80)
-        attachment = ctk.StringVar(value=contract.attachment_path if contract else "")
-        attachment_label = ctk.CTkLabel(modal.body, text=Path(attachment.get()).name if attachment.get() else "Nenhum PDF anexado", text_color=UI["muted"])
-        attachment_label.pack(anchor="w", pady=(12, 4))
-        attachment_actions = ctk.CTkFrame(modal.body, fg_color="transparent")
-        attachment_actions.pack(fill="x")
-
-        def select_attachment() -> None:
-            selected = filedialog.askopenfilename(parent=modal, title="Selecionar contrato", filetypes=[("Documento PDF", "*.pdf")])
-            if selected:
-                attachment.set(selected)
-                attachment_label.configure(text=Path(selected).name)
-
-        def remove_attachment() -> None:
-            attachment.set("")
-            attachment_label.configure(text="Nenhum PDF anexado")
-
-        ctk.CTkButton(attachment_actions, text="Selecionar PDF", width=120, command=select_attachment, **secondary_button()).pack(side="left")
-        ctk.CTkButton(attachment_actions, text="Remover anexo", width=120, command=remove_attachment, **secondary_button()).pack(side="left", padx=8)
-        operation_id = uuid.uuid4().hex
-
-        def save() -> None:
-            imported_path = attachment.get()
-            try:
-                if not title.get().strip():
-                    raise ValueError("O título do contrato é obrigatório.")
-                parsed_start = parse_date_input(start_date.get())
-                parsed_end = parse_date_input(end_date.get())
-                parsed_due_day = int(due_day.get()) if due_day.get().strip() else None
-                if parsed_due_day is not None and not 1 <= parsed_due_day <= 31:
-                    raise ValueError("O dia de vencimento deve estar entre 1 e 31.")
-                if parsed_start and parsed_end and parsed_end < parsed_start:
-                    raise ValueError("A data final não pode ser anterior à data inicial.")
-                value_cents = parse_money_to_cents(value.get())
-                if imported_path and imported_path != (contract.attachment_path if contract else ""):
-                    imported_path = self.db.import_contract_attachment(Path(imported_path), client.id)
-                payload = Contract(
-                    id=contract.id if contract else None,
-                    client_id=client.id,
-                    title=title.get(),
-                    description=description.get("1.0", "end").strip(),
-                    value_cents=value_cents,
-                    start_date=parsed_start,
-                    end_date=parsed_end,
-                    due_day=parsed_due_day,
-                    status=status.get(),
-                    attachment_path=imported_path,
-                    notes=notes.get("1.0", "end").strip(),
-                    operation_id=contract.operation_id if contract else operation_id,
-                )
-                if contract:
-                    self.db.update_contract(payload)
-                else:
-                    self.db.create_contract(payload)
-            except (OSError, ValueError) as exc:
-                self._show_warning("Contrato", str(exc))
-                return
-            modal.destroy()
-            self.show_clients()
-
-        modal.actions(save)
 
     def _open_contract_attachment(self, contract: Contract) -> None:
         path = Path(contract.attachment_path)

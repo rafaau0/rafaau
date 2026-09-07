@@ -5,7 +5,7 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 
-CLIENT_STATUSES = ["Ativo", "Inativo"]
+CLIENT_STATUSES = ["Lead", "Ativo", "Recorrente", "Inativo", "Arquivado"]
 CONTRACT_STATUSES = ["Rascunho", "Ativo", "Encerrado", "Cancelado"]
 
 
@@ -43,6 +43,8 @@ def parse_money_to_cents(value: str) -> int:
         amount = Decimal(cleaned).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     except InvalidOperation as exc:
         raise ValueError("Informe um valor monetário válido.") from exc
+    if not amount.is_finite():
+        raise ValueError("Informe um valor monetário finito.")
     if amount < 0:
         raise ValueError("O valor do contrato não pode ser negativo.")
     return int(amount * 100)

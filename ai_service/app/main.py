@@ -747,6 +747,8 @@ def ask_openai(payload: CutsRequest) -> list[dict]:
 
 
 app = FastAPI(title="Neiva AI API", version="1.0.0")
+from .contract_ai import register_contract_ai
+ContractAIUsage = register_contract_ai(app, Base, current_client, db_session)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[

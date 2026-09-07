@@ -1,0 +1,2 @@
+# Cliente HTTP usado apenas nos testes de rotas FastAPI.
+httpx>=0.28,<1

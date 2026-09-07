@@ -2,6 +2,17 @@
 
 ## 1. Objetivo do projeto
 
+### CRM profissional local (2026-09-07)
+
+- Leia `docs/CRM.md` antes de alterar o CRM. `crm.py` contém migração versionada, regras e transações; `crm_view.py` integra as cinco abas através de `ClientManagementMixin`; `contract_documents.py` reúne modelos, preenchimento local e PDF ReportLab.
+- Novas tabelas locais `crm_*` complementam `clientes` e `contracts`; não há migração de dados para a nuvem. Migração 1 é aditiva, transacional e cria backup SQLite antes de atualizar bancos com clientes. Preservar isolamento pelo arquivo da conta e validar cliente em todos os vínculos.
+- Status documental é independente da situação comercial legada. Versões impedem sobrescrita concorrente; documentos finalizados/arquivados são duplicados para edição. Cobranças impedem exclusão de contrato, troca de serviço e exclusão do cliente; usar arquivamento. Arquivar contrato não encerra sua vigência comercial.
+- Recebimentos parciais e cobranças manuais usam centavos, transações e IDs idempotentes. Não há cobrança bancária automática, estorno ou conciliação. Valor contratado não equivale a recebimento; receita mensal exclui cobrança única. `Recorrente` conta como cliente ativo.
+- Nova rota remota `/v1/contracts/draft` em `ai_service/app/contract_ai.py`: autenticação existente, resposta estruturada sem ferramentas e cota própria `contract_ai_usage`. `CONTRACT_AI_MONTHLY_LIMIT=0` desabilita por padrão; habilitar no servidor com limite explícito e `OPENAI_API_KEY`; `CONTRACT_AI_MODEL` é opcional. Somente rascunhos, com revisão obrigatória; placeholders pessoais são preenchidos localmente.
+- Testes em `tests/test_crm.py`, `tests/test_contract_ai.py` e teste gráfico opcional `tests/test_crm_ui.py` (`CRM_UI_TESTS=1`). `scripts/qa_contract_pdf.py` verifica PDF sintético; ferramentas extras de QA estão em pasta ignorada e não integram requisitos do produto.
+- Validação local da entrega: 76 testes passaram com o teste gráfico habilitado, além de compileall, pip check, lint/typecheck/build do site e inspeção de PDF de três páginas. `requirements-test.txt` declara o cliente HTTP de testes e é instalado no CI; não altera os requisitos de assinatura stable.
+- Histórico começa na implantação; não inventar eventos passados. Anexos de versões anteriores e backups são preservados, exigindo política futura de retenção. Deploy remoto/IA real e atualização do download público são etapas distintas do build local.
+
 ### Dashboard atualizada (2026-09-07)
 
 - `content_planner/dashboard_view.py` contém `DashboardMixin`; `ui.py` mantém a navegação e os formulários compartilhados.

@@ -1,5 +1,7 @@
 # Neiva Planner
 
+A Gestão de Clientes agora inclui serviços/projetos, contratos versionados e modelos, PDFs, controle financeiro manual, anotações e histórico. A arquitetura continua local por conta; veja [documentação do CRM](docs/CRM.md) para regras, migração, limites e configuração opcional da IA no servidor.
+
 Aplicativo desktop para gerenciar clientes e contratos, planejar calendários editoriais, conteúdos, PDFs e cards no Trello. Os dados ficam somente neste computador, em um banco SQLite local.
 
 O **Estúdio de Vídeo** abre o DaVinci Resolve instalado no computador do cliente e instala um comando no menu **Espaço de trabalho → Scripts → Edit → rafaau_timeline**. O comando analisa o vídeo já aberto, pede confirmação antes de aplicar, cria uma nova timeline sem os silêncios detectados e gera localmente legendas em português para uso no Resolve gratuito. A timeline original nunca é alterada.

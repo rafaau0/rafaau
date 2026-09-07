@@ -91,7 +91,7 @@ class DashboardMixin:
                       data['upcoming'], 'Nenhuma entrega prevista para os próximos sete dias.')
         business = section('Clientes e contratos · situação atual',
                            'O filtro de cliente se aplica aqui. Valores consideram a vigência de hoje, independentemente do mês selecionado.')
-        for text in [f"Clientes ativos: {sum(c.status == 'Ativo' for c in data['clients'].values())}",
+        for text in [f"Clientes ativos: {sum(c.status in {'Ativo','Recorrente'} for c in data['clients'].values())}",
                      f"Contratos vigentes: {len(data['contracts'])}",
                      f"Valor mensal contratado: {format_money(data['revenue'])}"]:
             ctk.CTkLabel(business, text=text, font=font(15, 'bold'), text_color=UI['text']).pack(anchor='w', padx=18, pady=4)

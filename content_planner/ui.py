@@ -1324,7 +1324,11 @@ class ContentPlannerApp(DashboardMixin, ClientManagementMixin, ctk.CTk):
         if client.id is None:
             return
         if messagebox.askyesno("Excluir cliente", f"Excluir {client.name}, todas as postagens, contratos e PDFs anexados?"):
-            self.db.delete_client(client.id)
+            try:
+                self.db.delete_client(client.id)
+            except ValueError as exc:
+                self._show_warning('Cliente', str(exc))
+                return
             if self.selected_client_id == client.id:
                 self.selected_client_id = None
             self._refresh_active_view()
