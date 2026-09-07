@@ -59,7 +59,7 @@ def authorize(timeout: int = 300) -> tuple[str, str]:
     """Autoriza pelo callback HTTPS da API e entrega a credencial uma única vez."""
     client_token = get_secret("NEIVA_AI_CLIENT_TOKEN")
     if not client_token:
-        raise TrelloAuthError("Entre na sua conta rafaau antes de conectar o Trello.")
+        raise TrelloAuthError("Entre na sua conta Vydra antes de conectar o Trello.")
     headers = {"Authorization": f"Bearer {client_token}"}
     try:
         response = requests.post(f"{API_URL}/v1/integrations/trello/start", headers=headers, timeout=30)

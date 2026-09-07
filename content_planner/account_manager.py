@@ -29,7 +29,7 @@ class AccountManagerDialog(ctk.CTkToplevel):
         for child in self.winfo_children():
             child.destroy()
         ctk.CTkLabel(self, text="Suas contas", font=font(27, "bold", heading=True)).pack(anchor="w", padx=24, pady=(24, 3))
-        ctk.CTkLabel(self, text="Alterne de perfil sem informar a senha novamente.", text_color="#68707D").pack(anchor="w", padx=24, pady=(0, 16))
+        ctk.CTkLabel(self, text="Alterne de perfil sem informar a senha novamente.", text_color=UI["muted"]).pack(anchor="w", padx=24, pady=(0, 16))
         current = current_account()
         accounts_frame = ctk.CTkScrollableFrame(self, fg_color=UI["surface"], corner_radius=RADIUS["md"], border_width=1, border_color=UI["border"])
         accounts_frame.pack(fill="both", expand=True, padx=24)
@@ -39,17 +39,17 @@ class AccountManagerDialog(ctk.CTkToplevel):
             row.grid_columnconfigure(0, weight=1)
             ctk.CTkLabel(row, text=account.name, font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, sticky="w", padx=14, pady=(11, 1))
             detail = account.email + (f"  ·  Plano {account.plan.title()}" if account.plan else "")
-            ctk.CTkLabel(row, text=detail, text_color="#68707D", font=ctk.CTkFont(size=11)).grid(row=1, column=0, sticky="w", padx=14, pady=(0, 11))
+            ctk.CTkLabel(row, text=detail, text_color=UI["muted"], font=ctk.CTkFont(size=11)).grid(row=1, column=0, sticky="w", padx=14, pady=(0, 11))
             if current and current.account_id == account.account_id:
-                ctk.CTkLabel(row, text="● Em uso", text_color="#168A5B", font=ctk.CTkFont(size=11, weight="bold")).grid(row=0, column=1, rowspan=2, padx=14)
+                ctk.CTkLabel(row, text="● Em uso", text_color=UI["success"], font=ctk.CTkFont(size=11, weight="bold")).grid(row=0, column=1, rowspan=2, padx=14)
             else:
                 ctk.CTkButton(row, text="Usar", width=70, command=lambda value=account.account_id: self._switch(value)).grid(row=0, column=1, rowspan=2, padx=(4, 6))
-                ctk.CTkButton(row, text="×", width=34, fg_color="transparent", hover_color="#FFF0F2", text_color="#C92A3D", command=lambda value=account.account_id: self._remove(value)).grid(row=0, column=2, rowspan=2, padx=(0, 8))
+                ctk.CTkButton(row, text="×", width=34, fg_color="transparent", hover_color="#FCEDEF", text_color=UI["error"], command=lambda value=account.account_id: self._remove(value)).grid(row=0, column=2, rowspan=2, padx=(0, 8))
         actions = ctk.CTkFrame(self, fg_color="transparent")
         actions.pack(fill="x", padx=24, pady=20)
         ctk.CTkButton(actions, text="ADICIONAR OUTRA CONTA", command=lambda: self._restart("add"), **primary_button()).pack(side="left")
         if current:
-            ctk.CTkButton(actions, text="Sair desta conta", fg_color="#E7EAF0", hover_color="#D8DDE5", text_color="#17191F", command=lambda: self._logout(current.account_id)).pack(side="right")
+            ctk.CTkButton(actions, text="Sair desta conta", command=lambda: self._logout(current.account_id), **secondary_button()).pack(side="right")
 
     def _switch(self, account_id: str) -> None:
         activate_account(account_id)

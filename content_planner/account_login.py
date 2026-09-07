@@ -1,4 +1,4 @@
-"""Entrada e criação de contas rafaau, com painel deslizante nativo."""
+"""Entrada e criação de contas Vydra, com painel deslizante nativo."""
 from __future__ import annotations
 
 import re
@@ -48,14 +48,14 @@ class LoginWindow(ctk.CTk):
         self.showing_signup = False
         self._animating = False
         self._result_queue: Queue[tuple[str, str]] = Queue()
-        self.title("rafaau | Entrar")
+        self.title("Vydra | Entrar")
         self.geometry("760x680")
         self.minsize(620, 600)
         self.configure(fg_color=UI["canvas"])
         self.protocol("WM_DELETE_WINDOW", self._cancel)
         ctk.set_appearance_mode("light")
 
-        self.card = ctk.CTkFrame(self, width=520, fg_color=UI["surface"], corner_radius=RADIUS["lg"], border_width=1, border_color=UI["border"])
+        self.card = ctk.CTkFrame(self, width=540, fg_color=UI["surface"], corner_radius=RADIUS["md"], border_width=1, border_color=UI["border"])
         self.card.place(relx=.5, rely=.5, anchor="center", relheight=.88)
         self.card.bind("<Configure>", lambda _event: self._resize_panels())
         self._build_forms()
@@ -93,7 +93,8 @@ class LoginWindow(ctk.CTk):
 
     @staticmethod
     def _title(parent: ctk.CTkFrame, title: str, subtitle: str) -> None:
-        ctk.CTkLabel(parent, text=title, text_color=UI["text"], font=ctk.CTkFont(family="Segoe UI", size=30, weight="bold")).pack(pady=(34, 4))
+        ctk.CTkLabel(parent, text="VYDRA", text_color=UI["accent"], font=font(10, "bold")).pack(pady=(32, 10))
+        ctk.CTkLabel(parent, text=title, text_color=UI["text"], font=font(31, "bold", heading=True)).pack(pady=(0, 4))
         ctk.CTkLabel(parent, text=subtitle, text_color=UI["muted"], font=ctk.CTkFont(size=13)).pack(pady=(0, 18))
 
     def _entry(self, parent: ctk.CTkFrame, label: str, placeholder: str, password: bool = False) -> ctk.CTkEntry:
@@ -110,12 +111,12 @@ class LoginWindow(ctk.CTk):
     def _build_forms(self) -> None:
         self.login_form = ctk.CTkFrame(self.card, fg_color=UI["surface"], corner_radius=0)
         self.signup_form = ctk.CTkFrame(self.card, fg_color=UI["surface"], corner_radius=0)
-        self._title(self.login_form, "Entrar", "Acesse sua conta rafaau.")
+        self._title(self.login_form, "Entrar", "Acesse sua conta Vydra.")
         self.login_email = self._entry(self.login_form, "E-mail", "voce@empresa.com")
         self.login_password = self._entry(self.login_form, "Senha", "Sua senha", password=True)
         self.login_password.bind("<Return>", lambda _event: self._submit_login())
         self.login_error = self._message(self.login_form)
-        self.login_button = ctk.CTkButton(self.login_form, text="ENTRAR", height=41, fg_color=UI["accent"], hover_color=UI["accent_hover"], command=self._submit_login)
+        self.login_button = ctk.CTkButton(self.login_form, text="ENTRAR", command=self._submit_login, **primary_button())
         self.login_button.pack(fill="x", padx=46, pady=(8, 9))
         ctk.CTkButton(self.login_form, text="Criar uma conta", fg_color="transparent", hover=False,
                       text_color=UI["accent"], font=font(12, "bold"), command=self._toggle_slider).pack(pady=(0, 4))
@@ -127,7 +128,7 @@ class LoginWindow(ctk.CTk):
         self.signup_password = self._entry(self.signup_form, "Senha", "Mínimo de 8 caracteres", password=True)
         self.signup_password.bind("<Return>", lambda _event: self._submit_signup())
         self.signup_error = self._message(self.signup_form)
-        self.signup_button = ctk.CTkButton(self.signup_form, text="CRIAR CONTA", height=41, fg_color=UI["accent"], hover_color=UI["accent_hover"], command=self._submit_signup)
+        self.signup_button = ctk.CTkButton(self.signup_form, text="CRIAR CONTA", command=self._submit_signup, **primary_button())
         self.signup_button.pack(fill="x", padx=46, pady=(10, 8))
         ctk.CTkButton(self.signup_form, text="Voltar para o login", fg_color="transparent", hover=False,
                       text_color=UI["accent"], font=font(12, "bold"), command=self._toggle_slider).pack(pady=(0, 4))
@@ -191,7 +192,7 @@ class LoginWindow(ctk.CTk):
             self._result_queue.put(("signup_error", str(exc)))
 
     def _signup_success(self, email: str) -> None:
-        self.signup_error.configure(text="Conta criada no plano Grátis. Entre para começar.", text_color="#168A5B")
+        self.signup_error.configure(text="Conta criada no plano Grátis. Entre para começar.", text_color=UI["success"])
         self.signup_button.configure(state="normal", text="ENTRAR NA MINHA CONTA", command=self._toggle_slider)
         self.login_email.delete(0, "end"); self.login_email.insert(0, email)
 

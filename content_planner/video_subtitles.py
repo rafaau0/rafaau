@@ -121,7 +121,7 @@ def _transcribe_audio(audio: Path, model_name: str, max_words: int, progress=Non
     try:
         from faster_whisper import WhisperModel
     except ImportError as exc:
-        raise VideoError("A biblioteca faster-whisper não está instalada. Instale as dependências do Neiva Planner.") from exc
+        raise VideoError("A biblioteca faster-whisper não está instalada. Instale as dependências do Vydra.") from exc
     if progress: progress("Carregando modelo de transcrição…", 12)
     try:
         # CPU/int8 é a opção mais estável no Windows e funciona mesmo sem GPU NVIDIA.

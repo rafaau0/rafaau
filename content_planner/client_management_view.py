@@ -79,7 +79,7 @@ class ClientManagementMixin:
             contracts = self.db.list_contracts(client.id) if client.id else []
             active_contracts = [item for item in contracts if contract_display_status(item.status, item.end_date) in {"Ativo", "Vence em breve"}]
             revenue = sum(item.value_cents for item in active_contracts)
-            item = ctk.CTkFrame(parent, fg_color=UI["surface"], corner_radius=10, border_width=1, border_color=UI["border"])
+            item = ctk.CTkFrame(parent, fg_color=UI["surface"], corner_radius=RADIUS["md"], border_width=1, border_color=UI["border"])
             item.grid(row=row, column=0, sticky="ew", pady=6)
             item.grid_columnconfigure(0, weight=1)
             title = client.name + (f" · {client.company_name}" if client.company_name else "")
@@ -226,11 +226,11 @@ class ClientManagementMixin:
             if contract.attachment_path:
                 ctk.CTkButton(actions, text="Abrir PDF", width=88, command=lambda c=contract: self._open_contract_attachment(c), **secondary_button()).pack(side="left", padx=3)
             ctk.CTkButton(actions, text="Editar", width=78, command=lambda c=contract: (modal.destroy(), self._open_contract_modal(fresh, c)), **secondary_button()).pack(side="left", padx=3)
-            ctk.CTkButton(actions, text="Excluir", width=78, fg_color=UI["error"], hover_color="#A91F30", command=lambda c=contract: self._delete_contract(c, modal)).pack(side="left", padx=3)
+            ctk.CTkButton(actions, text="Excluir", width=78, fg_color=UI["error"], hover_color="#972C3A", command=lambda c=contract: self._delete_contract(c, modal)).pack(side="left", padx=3)
 
         footer = ctk.CTkFrame(modal.body, fg_color="transparent")
         footer.pack(fill="x", pady=(18, 0))
-        ctk.CTkButton(footer, text="Excluir cliente", width=120, fg_color=UI["error"], hover_color="#A91F30", command=lambda: (modal.destroy(), self._delete_client(fresh))).pack(side="left")
+        ctk.CTkButton(footer, text="Excluir cliente", width=120, fg_color=UI["error"], hover_color="#972C3A", command=lambda: (modal.destroy(), self._delete_client(fresh))).pack(side="left")
         ctk.CTkButton(footer, text="Fechar", width=100, command=modal.destroy, **secondary_button()).pack(side="right", padx=(8, 0))
         ctk.CTkButton(footer, text="Editar cadastro", width=130, command=lambda: (modal.destroy(), self._open_client_modal(fresh))).pack(side="right")
 

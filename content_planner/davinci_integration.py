@@ -75,7 +75,7 @@ def integration_status(environ: Mapping[str, str] | None = None) -> DavinciInteg
 def install_integration(environ: Mapping[str, str] | None = None) -> DavinciIntegrationStatus:
     source_script = script_source()
     if not source_script.is_file():
-        raise FileNotFoundError("O painel de integração com o DaVinci não foi encontrado. Reinstale o rafaau.")
+        raise FileNotFoundError("O painel de integração com o DaVinci não foi encontrado. Reinstale o Vydra.")
 
     source_ffmpeg = Path(binary("ffmpeg"))
     if not source_ffmpeg.is_file():

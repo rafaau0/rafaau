@@ -2,7 +2,7 @@
 
 ## 1. Objetivo do projeto
 
-Este repositório contém o produto **Neiva Planner / rafaau**, voltado a criadores, freelancers e pequenas agências que organizam conteúdo para clientes.
+Este repositório contém o produto **Vydra** (nomes internos legados: **Neiva Planner / rafaau**), voltado a criadores, freelancers e pequenas agências que organizam conteúdo para clientes.
 
 Há três aplicações no mesmo repositório:
 
@@ -10,7 +10,7 @@ Há três aplicações no mesmo repositório:
 2. **API remota** (`ai_service/`): mantém contas, licenças, planos, dispositivos, cotas de IA e cobrança; intermedeia chamadas à OpenAI; e protege o segredo OAuth do Trello.
 3. **Site público e administração** (`neiva-site/`): landing page, cadastro/login para checkout, redirecionamento ao Asaas, consulta do status de ativação, download do aplicativo e painel privado `/admin` para administrar assinantes.
 
-O código usa os nomes “Neiva Planner”, “Neiva” e “rafaau” para o mesmo produto. A marca pública mais recente no site/login é “rafaau”, mas nomes internos, executável, caminhos locais e API ainda usam “Neiva”. Não uniformizar isso sem levantar impactos de compatibilidade.
+O site, login, janela principal e superfícies visuais usam a marca pública “Vydra”. Nomes internos, executável, caminhos locais, keyring, API, domínio e script do DaVinci ainda usam “Neiva” ou “rafaau” por compatibilidade. Não renomear esses identificadores técnicos sem levantar impactos em instalações, sessões, integrações e downloads existentes.
 
 ## 2. Stack utilizada
 
@@ -165,7 +165,7 @@ As tabelas são criadas no evento de startup. Três tabelas recebem migrações 
 - `content_planner/secrets.py`: keyring, com variáveis de ambiente tendo precedência.
 - `content_planner/ffmpeg_tools.py`: resolve binários empacotados antes do PATH.
 - `content_planner/logging_setup.py`: log rotativo.
-- `content_planner/design_system.py`: tokens visuais.
+- `content_planner/design_system.py`: tokens visuais da identidade Vydra (`#F8F8FB`, branco, grafite e violeta `#6C5CE7`) e carregamento central do tema CustomTkinter.
 - `content_planner/rth_tk.py`, `hooks/...`, `NeivaPlanner.spec`: suporte ao empacotamento Windows.
 
 ### API e site

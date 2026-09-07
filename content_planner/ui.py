@@ -95,7 +95,7 @@ class ContentPlannerApp(ClientManagementMixin, ctk.CTk):
         ctk.set_appearance_mode("light")
         theme_path = _asset_path("neiva_light.json")
         ctk.set_default_color_theme(str(theme_path) if theme_path.exists() else "blue")
-        self.title("Neiva Planner")
+        self.title("Vydra")
         if ICON_PATH.exists():
             self.iconbitmap(ICON_PATH)
         screen_width, screen_height = self.winfo_screenwidth(), self.winfo_screenheight()
@@ -131,18 +131,37 @@ class ContentPlannerApp(ClientManagementMixin, ctk.CTk):
         style.map("Neiva.Treeview", background=[("selected", UI["selection"])], foreground=[("selected", UI["text"])])
 
     def _build_sidebar(self) -> None:
-        self.sidebar = ctk.CTkFrame(self, width=224, corner_radius=0, fg_color=UI["sidebar"])
+        self.sidebar = ctk.CTkFrame(
+            self,
+            width=236,
+            corner_radius=0,
+            fg_color=UI["sidebar"],
+            border_width=1,
+            border_color=UI["border"],
+        )
         self.sidebar.grid(row=0, column=0, sticky="nsew")
         self.sidebar.grid_propagate(False)
         sidebar = self.sidebar
 
-        if LOGO_PATH.exists():
-            self.logo_image = ctk.CTkImage(Image.open(LOGO_PATH), size=(92, 58))
-            ctk.CTkLabel(sidebar, text="", image=self.logo_image).pack(pady=(24, 8))
-        else:
-            ctk.CTkLabel(sidebar, text="NEIVA", font=ctk.CTkFont(family="Segoe UI", size=24, weight="bold")).pack(pady=(28, 2))
-        ctk.CTkLabel(sidebar, text="PLANNER EDITORIAL", text_color=UI["muted"], font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold")).pack(pady=(0, 28))
-        ctk.CTkLabel(sidebar, text="NAVEGAÇÃO", text_color=UI["muted"], font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold")).pack(anchor="w", padx=22, pady=(0, 7))
+        brand = ctk.CTkFrame(sidebar, fg_color="transparent", corner_radius=0)
+        brand.pack(fill="x", padx=22, pady=(26, 32))
+        ctk.CTkLabel(
+            brand,
+            text="V",
+            width=30,
+            height=30,
+            corner_radius=RADIUS["xs"],
+            fg_color=UI["accent"],
+            text_color="#FFFFFF",
+            font=font(17, "bold", heading=True),
+        ).pack(side="left")
+        ctk.CTkLabel(
+            brand,
+            text="Vydra",
+            text_color=UI["text"],
+            font=font(21, "bold", heading=True),
+        ).pack(side="left", padx=(10, 0))
+        ctk.CTkLabel(sidebar, text="NAVEGAÇÃO", text_color=UI["muted"], font=font(9, "bold")).pack(anchor="w", padx=22, pady=(0, 8))
 
         self._navigation = [
             ("Dashboard", self.show_dashboard),
@@ -168,7 +187,7 @@ class ContentPlannerApp(ClientManagementMixin, ctk.CTk):
                 fg_color="transparent",
                 hover_color=UI["sidebar_hover"],
                 text_color=UI["sidebar_text"],
-                font=font(12, "bold"),
+                font=font(12, "normal"),
                 command=handler,
             )
             button.pack(side="left", fill="both", expand=True, padx=(0, 12))
@@ -176,7 +195,7 @@ class ContentPlannerApp(ClientManagementMixin, ctk.CTk):
             self.nav_indicators.append(indicator)
 
         account = current_account()
-        account_name = account.name if account else "Conta Neiva"
+        account_name = account.name if account else "Conta Vydra"
         account_email = f"{account.email}  ·  {self.plan.name}" if account else "Gerenciar conta"
         ctk.CTkButton(
             sidebar,
@@ -185,10 +204,10 @@ class ContentPlannerApp(ClientManagementMixin, ctk.CTk):
             height=58,
             corner_radius=0,
             border_width=1,
-            border_color=UI["sidebar_hover"],
-            fg_color="transparent",
+            border_color=UI["border"],
+            fg_color=UI["surface_alt"],
             hover_color=UI["sidebar_hover"],
-            text_color="#FFFFFF",
+            text_color=UI["text"],
             font=font(11, "bold"),
             command=self._open_account_manager,
         ).pack(side="bottom", fill="x", padx=18, pady=20)
@@ -242,7 +261,7 @@ class ContentPlannerApp(ClientManagementMixin, ctk.CTk):
         self._content_header = header
         header.grid(row=0, column=0, sticky="ew", padx=(215 if self._compact_layout else 28, 28), pady=(24, 12))
         header.grid_columnconfigure(0, weight=1)
-        ctk.CTkLabel(header, text=title, text_color=UI["text"], font=font(30, "bold", heading=True)).grid(row=0, column=0, sticky="w")
+        ctk.CTkLabel(header, text=title, text_color=UI["text"], font=font(32, "bold", heading=True)).grid(row=0, column=0, sticky="w")
         if subtitle:
             ctk.CTkLabel(header, text=subtitle, text_color=UI["muted"], font=ctk.CTkFont(family="Segoe UI", size=13)).grid(row=1, column=0, sticky="w", pady=(4, 0))
 
@@ -277,7 +296,11 @@ class ContentPlannerApp(ClientManagementMixin, ctk.CTk):
             self.mobile_view.set(view_name)
         for label, button, indicator in zip((item[0] for item in self._navigation), self.nav_buttons, self.nav_indicators):
             selected = label == view_name
-            button.configure(fg_color=UI["sidebar_hover"] if selected else "transparent", text_color="#FFFFFF" if selected else UI["sidebar_text"])
+            button.configure(
+                fg_color=UI["sidebar_hover"] if selected else "transparent",
+                text_color=UI["accent_hover"] if selected else UI["sidebar_text"],
+                font=font(12, "bold" if selected else "normal"),
+            )
             indicator.configure(fg_color=UI["accent"] if selected else "transparent")
         return self._clear_content(title, subtitle)
 
@@ -332,7 +355,7 @@ class ContentPlannerApp(ClientManagementMixin, ctk.CTk):
 
         expiring = self.db.expiring_contracts()
         if expiring:
-            alerts = ctk.CTkFrame(frame, fg_color="#FFF8EA", corner_radius=RADIUS["md"], border_width=1, border_color="#E9C98B")
+            alerts = ctk.CTkFrame(frame, fg_color="#FFF9EE", corner_radius=RADIUS["md"], border_width=1, border_color="#E9D8B8")
             alerts.grid(row=2, column=0, sticky="ew", pady=(0, 18))
             ctk.CTkLabel(alerts, text="CONTRATOS PRÓXIMOS DO VENCIMENTO", text_color=UI["warning"], font=font(10, "bold")).pack(anchor="w", padx=18, pady=(14, 6))
             for contract, client in expiring[:5]:
@@ -468,7 +491,7 @@ class ContentPlannerApp(ClientManagementMixin, ctk.CTk):
                 cell.grid_propagate(False)
                 ctk.CTkLabel(cell, text=str(day), font=ctk.CTkFont(size=16, weight="bold")).pack(anchor="nw", padx=10, pady=(8, 2))
                 for post in day_posts[:3]:
-                    ctk.CTkLabel(cell, text=f"{post.content_type} · {post.status}", text_color="#9F1D2C", anchor="w").pack(
+                    ctk.CTkLabel(cell, text=f"{post.content_type} · {post.status}", text_color=UI["accent_hover"], anchor="w").pack(
                         fill="x", padx=10
                     )
                 if len(day_posts) > 3:
@@ -1311,7 +1334,7 @@ class ContentPlannerApp(ClientManagementMixin, ctk.CTk):
                     text="Excluir",
                     width=82,
                     fg_color=UI["error"],
-                    hover_color="#A91F30",
+                    hover_color="#972C3A",
                     command=lambda p=post: self._delete_post(p, modal),
                 ).pack(side="left", padx=4)
 

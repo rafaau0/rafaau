@@ -31,7 +31,7 @@ class DavinciDialog(ctk.CTk):
         self.finished = False
         self.kind = str(request.get("kind", "info"))
 
-        self.title(str(request.get("title") or "rafaau"))
+        self.title(str(request.get("title") or "Vydra"))
         self.geometry("620x440")
         self.minsize(540, 360)
         self.resizable(False, False)
@@ -45,8 +45,8 @@ class DavinciDialog(ctk.CTk):
         header.grid_propagate(False)
         ctk.CTkLabel(
             header,
-            text="rafaau.",
-            text_color="#FFFFFF",
+            text="Vydra",
+            text_color=COLORS["text"],
             font=font(25, "bold", heading=True),
         ).pack(side="left", padx=SPACE["xl"], pady=SPACE["lg"])
         ctk.CTkLabel(

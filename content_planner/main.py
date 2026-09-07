@@ -11,6 +11,11 @@ except ImportError:
 
 
 def main() -> None:
+    try:
+        from .design_system import apply_theme
+    except ImportError:
+        from content_planner.design_system import apply_theme
+    apply_theme()
     if len(sys.argv) == 3 and sys.argv[1] == "--davinci-dialog":
         try:
             from .davinci_dialog import run_dialog
@@ -50,7 +55,7 @@ def main() -> None:
         traceback.print_exc()
         try:
             from tkinter import messagebox
-            messagebox.showerror("Neiva Planner", f"Não foi possível iniciar o aplicativo.\n\nConsulte o arquivo de logs para suporte.\n\n{exc}")
+            messagebox.showerror("Vydra", f"Não foi possível iniciar o aplicativo.\n\nConsulte o arquivo de logs para suporte.\n\n{exc}")
         except Exception:
             pass
 

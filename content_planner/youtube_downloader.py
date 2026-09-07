@@ -34,7 +34,7 @@ def download(url: str, destination: Path, progress: Callable[[dict[str, Any]], N
     try:
         import yt_dlp
     except ImportError as exc:
-        raise DownloadError("yt-dlp não está instalado. Atualize as dependências do Neiva Planner.") from exc
+        raise DownloadError("yt-dlp não está instalado. Atualize as dependências do Vydra.") from exc
     destination.mkdir(parents=True, exist_ok=True)
     try:
         ffmpeg = binary("ffmpeg")
@@ -64,7 +64,7 @@ def download_audio(url: str, destination: Path, progress: Callable[[dict[str, An
         import yt_dlp
         ffmpeg = binary("ffmpeg")
     except ImportError as exc:
-        raise DownloadError("yt-dlp não está instalado. Atualize as dependências do Neiva Planner.") from exc
+        raise DownloadError("yt-dlp não está instalado. Atualize as dependências do Vydra.") from exc
     except FFmpegNotFoundError as exc:
         raise DownloadError(str(exc)) from exc
     destination.mkdir(parents=True, exist_ok=True)
