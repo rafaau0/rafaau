@@ -1,79 +1,52 @@
 import { ActivationStatus } from '../components/activation-status';
 import { CheckoutButton } from '../components/checkout-button';
 
-const features = [
-  {
-    number: '01',
-    title: 'Calendário editorial',
-    text: 'Visualize o mês inteiro, distribua campanhas, posts e entregas antes de o prazo virar urgência.',
-    color: 'bg-[#FFF0F2] text-[#FF263D]',
-  },
-  {
-    number: '02',
-    title: 'Clientes e demandas',
-    text: 'Centralize briefing, status e data de cada conteúdo em uma rotina organizada.',
-    color: 'bg-[#EEF5FF] text-[#2563EB]',
-  },
-  {
-    number: '03',
-    title: 'Trello conectado',
-    text: 'Envie o planejamento para o quadro certo e deixe cada pessoa acompanhar o que acontece.',
-    color: 'bg-[#EAF7F1] text-[#168A5B]',
-  },
-  {
-    number: '04',
-    title: 'Vídeo e IA rafaau',
-    text: 'Transcreva vídeos, encontre trechos promissores e transforme material longo em novas ideias.',
-    color: 'bg-[#FFF6E8] text-[#C77A08]',
-  },
-];
-
-const workflow = [
-  [
-    'Planeje',
-    'Crie pautas, defina clientes, formatos e datas no calendário visual.',
-  ],
-  [
-    'Produza',
-    'Organize a produção e abra o DaVinci Resolve diretamente pelo rafaau.',
-  ],
-  [
-    'Distribua',
-    'Envie para o Trello e acompanhe o que está pronto, em andamento ou pendente.',
-  ],
-];
-
 const plans = [
   {
     code: 'free',
     name: 'Grátis',
     price: '0',
-    credits: 'Não incluída',
-    use: 'Para conhecer o planejamento editorial.',
-    features: ['1 cliente e 15 conteúdos por mês', '1 PDF por mês', 'Calendário e dashboard', 'Sem Trello ou integração DaVinci'],
+    credits: 'Sem créditos de IA',
+    note: 'Para organizar o primeiro cliente.',
+    features: [
+      '1 cliente e 15 conteúdos por mês',
+      '1 PDF por mês',
+      'Calendário e dashboard',
+      '1 computador',
+    ],
   },
   {
     code: 'essencial',
     name: 'Essencial',
     price: '49,90',
-    credits: '20',
-    use: 'Para quem analisa alguns vídeos por mês.',
-    features: ['Até 10 clientes', 'Conteúdos e PDFs ilimitados', 'Trello e integração DaVinci', 'Uso em até 2 computadores'],
+    credits: '20 créditos de IA / mês',
+    note: 'Para uma rotina criativa constante.',
+    features: [
+      'Até 10 clientes',
+      'Conteúdos e PDFs ilimitados',
+      'Trello e integração DaVinci',
+      'Até 2 computadores',
+    ],
   },
   {
     code: 'pro',
     name: 'Pro',
     price: '89,90',
-    credits: '80',
-    use: 'Para quem produz para vários clientes ou publica toda semana.',
-    features: ['Clientes e conteúdos ilimitados', 'Trello e integração DaVinci', 'Maior volume de IA', 'Uso em até 3 computadores'],
+    credits: '80 créditos de IA / mês',
+    note: 'Para quem trabalha em maior volume.',
+    features: [
+      'Clientes e conteúdos ilimitados',
+      'Trello e integração DaVinci',
+      'Maior volume de IA',
+      'Até 3 computadores',
+    ],
   },
 ];
 
 const faqs = [
   [
     'O que é um crédito de IA?',
-    'Um crédito equivale a uma análise de vídeo pela IA rafaau para encontrar cortes e ideias aproveitáveis. Os créditos são renovados mensalmente conforme o seu plano.',
+    'Um crédito equivale a uma análise de vídeo pela IA do Vydra para encontrar cortes e ideias aproveitáveis. Os créditos são renovados mensalmente conforme o seu plano.',
   ],
   [
     'Como funciona o cancelamento?',
@@ -95,91 +68,200 @@ const DOWNLOAD_URL =
 function Logo({ compact = false }: { compact?: boolean }) {
   return (
     <span
-      className={`inline-flex items-center justify-center rounded-xl bg-[#FF263D] font-black text-white ${compact ? 'size-7 text-sm' : 'size-9 text-lg'}`}
+      className={`inline-flex items-center gap-2.5 font-black tracking-[-.04em] ${compact ? 'text-sm' : 'text-xl'}`}
     >
-      r
+      <svg
+        className={compact ? 'size-6' : 'size-8'}
+        viewBox="0 0 32 32"
+        aria-hidden="true"
+      >
+        <path d="M4 5h6l6 15L22 5h6L17.8 27h-4.1L4 5Z" fill="#6C5CE7" />
+        <path d="m11.5 5 4.6 11L20.5 5h-9Z" fill="#18181F" />
+      </svg>
+      {!compact && <span>Vydra</span>}
     </span>
   );
 }
 
 function ProductPreview() {
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-[#DDE1E7] bg-[#17191F] p-3 shadow-2xl shadow-slate-900/10">
-      <div className="absolute -left-10 top-10 size-48 rounded-full bg-[#FF263D]/20 blur-3xl" />
-      <div className="relative overflow-hidden rounded-xl border border-white/10 bg-[#20232B]">
-        <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-          <div className="flex gap-1.5">
-            <i className="size-2 rounded-full bg-[#FF5265]" />
-            <i className="size-2 rounded-full bg-[#F2B84B]" />
-            <i className="size-2 rounded-full bg-[#48B887]" />
-          </div>
-          <span className="text-[10px] font-bold tracking-[.16em] text-slate-400">
-            VISÃO GERAL DO APLICATIVO
-          </span>
+    <div className="border border-[#E7E7EE] bg-white shadow-[0_24px_60px_rgba(24,24,31,.08)]">
+      <div className="flex h-10 items-center justify-between border-b border-[#E7E7EE] px-4">
+        <div className="flex items-center gap-2">
+          <Logo compact />
+          <span className="text-xs font-bold">Vydra</span>
         </div>
-        <div className="grid gap-4 p-5 sm:grid-cols-[124px_1fr]">
-          <div className="rounded-lg bg-white/5 p-3 text-xs font-bold text-slate-400">
-            <div className="mb-5 flex items-center gap-2 text-white">
-              <Logo compact /> rafaau
+        <span className="text-[11px] text-[#6E6E7A]">
+          Setembro · visão editorial
+        </span>
+      </div>
+      <div className="grid grid-cols-[82px_1fr] sm:grid-cols-[132px_1fr]">
+        <aside className="border-r border-[#E7E7EE] p-3 text-[11px] text-[#6E6E7A] sm:p-4">
+          <p className="border-l-2 border-[#6C5CE7] py-1 pl-2 font-semibold text-[#18181F]">
+            Visão geral
+          </p>
+          <p className="mt-4 pl-2">Clientes</p>
+          <p className="mt-4 pl-2">Planejamento</p>
+          <p className="mt-4 pl-2">Vídeo</p>
+        </aside>
+        <div className="min-w-0 p-4 sm:p-6">
+          <div className="flex items-end justify-between border-b border-[#E7E7EE] pb-4">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-[.16em] text-[#6C5CE7]">
+                Semana 36
+              </p>
+              <p className="mt-1 text-lg font-semibold">
+                O trabalho em movimento
+              </p>
             </div>
-            <p className="rounded-md bg-[#FF263D]/20 px-2 py-2 text-[#FF9AA5]">
-              Planejamento
-            </p>
-            <p className="mt-3 px-2">Conteúdos</p>
-            <p className="mt-3 px-2">Vídeos & IA</p>
-            <p className="mt-3 px-2">Clientes</p>
+            <span className="hidden bg-[#EEEAFE] px-3 py-1.5 text-[10px] font-semibold text-[#5848D6] sm:block">
+              + Novo conteúdo
+            </span>
           </div>
-          <div className="min-w-0">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-slate-400">Passo 01</p>
-                <h2 className="mt-1 text-lg font-black text-white">
-                  Criar conteúdo
-                </h2>
+          <div className="mt-4 grid grid-cols-3 border-y border-[#E7E7EE] text-[10px] sm:text-xs">
+            {[
+              ['12', 'entregas'],
+              ['04', 'clientes'],
+              ['09', 'concluídas'],
+            ].map(([value, label]) => (
+              <div
+                key={label}
+                className="border-r border-[#E7E7EE] px-2 py-3 last:border-r-0"
+              >
+                <b className="block text-lg">{value}</b>
+                <span className="text-[#6E6E7A]">{label}</span>
               </div>
-              <span className="rounded-full bg-[#FF263D] px-3 py-1 text-[10px] font-bold text-white">
-                NOVO POST
-              </span>
-            </div>
-            <div className="mt-4 rounded-lg bg-white p-3 text-xs">
-              <div className="flex items-center justify-between">
-                <b>Reels: bastidores da marca</b>
-                <span className="rounded-full bg-[#FFF6E8] px-2 py-1 text-[#C77A08]">
-                  Em produção
+            ))}
+          </div>
+          <div className="mt-4 space-y-2 text-[10px] sm:text-xs">
+            {[
+              ['Identidade visual · Aurora', 'Hoje', 'Em revisão'],
+              ['Carrossel lançamento · Noma', 'Qua, 09', 'Em produção'],
+              ['Calendário editorial · Lume', 'Sex, 11', 'Aprovado'],
+            ].map(([title, date, status], index) => (
+              <div
+                key={title}
+                className="grid grid-cols-[1fr_auto] items-center border-b border-[#E7E7EE] py-2.5"
+              >
+                <div>
+                  <p className="font-semibold">{title}</p>
+                  <p className="mt-1 text-[#6E6E7A]">{date}</p>
+                </div>
+                <span
+                  className={
+                    index === 2
+                      ? 'text-[#22C55E]'
+                      : index === 0
+                        ? 'text-[#6C5CE7]'
+                        : 'text-[#6E6E7A]'
+                  }
+                >
+                  ● {status}
                 </span>
               </div>
-              <div className="mt-3 h-2 rounded-full bg-[#E7EAF0]">
-                <div className="h-2 w-2/3 rounded-full bg-[#FF263D]" />
-              </div>
-            </div>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <div className="rounded-lg border border-white/10 p-3">
-                <p className="text-[10px] font-bold text-slate-400">PASSO 02</p>
-                <p className="mt-2 text-sm font-bold text-white">
-                  Mover status
-                </p>
-                <p className="mt-1 text-xs text-slate-400">
-                  Pronto para revisão
-                </p>
-              </div>
-              <div className="rounded-lg bg-[#FF263D] p-3">
-                <p className="text-[10px] font-bold text-red-100">
-                  PASSO 03 · IA
-                </p>
-                <p className="mt-2 text-sm font-bold text-white">
-                  3 cortes encontrados
-                </p>
-                <p className="mt-1 text-xs text-red-100">Analisar vídeo</p>
-              </div>
-            </div>
+            ))}
           </div>
         </div>
       </div>
-      <div className="relative mt-3 flex items-center gap-3 px-2 pb-1 text-xs text-slate-300">
-        <span className="inline-flex size-7 items-center justify-center rounded-full bg-[#FF263D] text-white">
+    </div>
+  );
+}
+
+function ClientWorkspace() {
+  return (
+    <div className="border-y border-[#E7E7EE] bg-white">
+      <div className="flex items-center justify-between border-b border-[#E7E7EE] px-5 py-4">
+        <div>
+          <p className="text-xs text-[#6E6E7A]">Cliente selecionado</p>
+          <p className="mt-1 font-semibold">Estúdio Aurora</p>
+        </div>
+        <span className="text-xs font-medium text-[#22C55E]">
+          ● Contrato ativo
+        </span>
+      </div>
+      <div className="grid sm:grid-cols-[1fr_1.15fr]">
+        <div className="border-b border-[#E7E7EE] p-5 sm:border-b-0 sm:border-r">
+          <p className="text-xs font-semibold uppercase tracking-[.15em] text-[#6E6E7A]">
+            Contato
+          </p>
+          <dl className="mt-5 space-y-4 text-sm">
+            <div>
+              <dt className="text-[#6E6E7A]">Responsável</dt>
+              <dd className="mt-1 font-medium">Marina Costa</dd>
+            </div>
+            <div>
+              <dt className="text-[#6E6E7A]">Próxima entrega</dt>
+              <dd className="mt-1 font-medium">12 de setembro</dd>
+            </div>
+            <div>
+              <dt className="text-[#6E6E7A]">Valor mensal</dt>
+              <dd className="mt-1 font-medium">R$ 2.400,00</dd>
+            </div>
+          </dl>
+        </div>
+        <div className="p-5">
+          <p className="text-xs font-semibold uppercase tracking-[.15em] text-[#6E6E7A]">
+            Este mês
+          </p>
+          <div className="mt-5 space-y-3 text-sm">
+            {[
+              ['Direção criativa', 'Concluído'],
+              ['Kit de lançamento', 'Em revisão'],
+              ['6 peças sociais', 'Em produção'],
+            ].map(([task, status], index) => (
+              <div
+                key={task}
+                className="flex items-center justify-between border-b border-[#E7E7EE] pb-3"
+              >
+                <span>{task}</span>
+                <span
+                  className={
+                    index === 0
+                      ? 'text-[#22C55E]'
+                      : index === 1
+                        ? 'text-[#6C5CE7]'
+                        : 'text-[#6E6E7A]'
+                  }
+                >
+                  {status}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function VideoTimeline() {
+  return (
+    <div className="border border-[#E7E7EE] bg-[#18181F] p-5 text-white sm:p-7">
+      <div className="flex items-center justify-between border-b border-white/15 pb-4 text-xs">
+        <span>DaVinci Resolve</span>
+        <span className="text-[#A8A8B3]">Integração local</span>
+      </div>
+      <div className="mt-8 flex h-28 items-center justify-center border border-white/10 bg-[#202029]">
+        <span className="inline-flex size-10 items-center justify-center rounded-full border border-white/30">
           ▶
         </span>
-        <span>Prévia ilustrativa da interface</span>
+      </div>
+      <div className="mt-5 flex h-12 gap-1 border-y border-white/15 py-2">
+        {[2, 1, 3, 2, 4, 1, 2, 3, 1, 2].map((width, index) => (
+          <span
+            key={index}
+            style={{ flex: width }}
+            className={
+              index === 4 || index === 5 ? 'bg-[#6C5CE7]' : 'bg-white/20'
+            }
+          />
+        ))}
+      </div>
+      <div className="mt-4 flex justify-between gap-4 text-xs text-[#A8A8B3]">
+        <span>Silêncios identificados</span>
+        <span className="text-right text-white">
+          Legenda preparada localmente
+        </span>
       </div>
     </div>
   );
@@ -187,33 +269,32 @@ function ProductPreview() {
 
 export default function Home() {
   return (
-    <main className="min-h-screen bg-[#F7F8FA] text-[#17191F]">
+    <main className="min-h-screen bg-[#F8F8FB] text-[#18181F]">
       <ActivationStatus />
-      <nav className="mx-auto flex h-20 max-w-7xl items-center justify-between px-6">
-        <a
-          href="#inicio"
-          className="flex items-center gap-3 font-black tracking-tight"
-        >
+      <nav
+        className="mx-auto flex h-20 max-w-[1180px] items-center justify-between border-b border-[#E7E7EE] px-5 sm:px-8"
+        aria-label="Navegação principal"
+      >
+        <a href="#inicio" aria-label="Vydra, início">
           <Logo />
-          <span>rafaau</span>
         </a>
-        <div className="hidden items-center gap-7 text-sm font-medium text-[#68707D] md:flex">
-          <a className="hover:text-[#17191F]" href="#recursos">
-            O que entrega
+        <div className="hidden items-center gap-7 text-sm text-[#6E6E7A] md:flex">
+          <a className="transition hover:text-[#18181F]" href="#produto">
+            Produto
           </a>
-          <a className="hover:text-[#17191F]" href="#como-funciona">
+          <a className="transition hover:text-[#18181F]" href="#fluxo">
             Como funciona
           </a>
-          <a className="hover:text-[#17191F]" href="#planos">
+          <a className="transition hover:text-[#18181F]" href="#planos">
             Planos
           </a>
-          <a className="hover:text-[#17191F]" href="#download">
-            Baixar app
+          <a className="transition hover:text-[#18181F]" href="#download">
+            Dawnload
           </a>
         </div>
         <a
           href="#planos"
-          className="rounded-lg bg-[#FF263D] px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#D91E32]"
+          className="bg-[#6C5CE7] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#5848D6]"
         >
           Começar agora
         </a>
@@ -221,216 +302,235 @@ export default function Home() {
 
       <section
         id="inicio"
-        className="mx-auto grid max-w-7xl gap-12 px-6 pb-20 pt-12 lg:grid-cols-[.95fr_1.05fr] lg:items-center lg:pt-20"
+        className="mx-auto grid max-w-[1180px] gap-12 px-5 pb-24 pt-12 sm:px-8 lg:grid-cols-[.78fr_1.22fr] lg:items-center lg:pt-20"
       >
         <div>
-          <p className="mb-6 inline-flex rounded-full bg-[#FFF0F2] px-4 py-2 text-xs font-bold tracking-[.12em] text-[#9F1D2C]">
-            PLANEJAMENTO DE CONTEÚDO, SEM IMPROVISO
+          <p className="mb-8 border-l-2 border-[#6C5CE7] pl-3 text-xs font-semibold uppercase tracking-[.18em] text-[#6E6E7A]">
+            Ferramenta de trabalho para criativos
           </p>
-          <h1 className="max-w-3xl text-5xl font-black leading-[.98] tracking-[-.055em] sm:text-6xl lg:text-7xl">
-            Você atende vários clientes e ainda se perde entre{' '}
-            <span className="text-[#FF263D]">
-              WhatsApp, planilhas e anotações?
-            </span>
+          <h1 className="max-w-xl text-4xl font-semibold leading-[1.02] tracking-[-.05em] sm:text-5xl lg:text-[4rem]">
+            Menos abas abertas. Mais trabalho concluído.
           </h1>
-          <p className="mt-7 max-w-2xl text-lg leading-8 text-[#68707D]">
-            O rafaau é para criadores, freelancers e pequenas agências que
-            precisam transformar demandas soltas em uma operação clara: o que
-            criar, para quem, em qual etapa e quando entregar.
+          <p className="mt-7 max-w-lg text-lg leading-8 text-[#6E6E7A]">
+            O Vydra organiza clientes, contratos, conteúdo e produção em um só
+            lugar — para quem cria no computador todos os dias.
           </p>
           <div className="mt-9 flex flex-wrap gap-3">
             <a
               href="#planos"
-              className="rounded-lg bg-[#FF263D] px-6 py-4 font-bold text-white shadow-lg shadow-red-200 transition hover:bg-[#D91E32]"
+              className="bg-[#6C5CE7] px-6 py-3.5 font-semibold text-white transition hover:bg-[#5848D6]"
             >
-              Quero organizar meu conteúdo
+              Começar com o Vydra
             </a>
             <a
-              href="#recursos"
-              className="rounded-lg border border-[#DDE1E7] bg-white px-6 py-4 font-bold text-[#17191F] transition hover:bg-[#F0F2F5]"
+              href="#produto"
+              className="border border-[#E7E7EE] bg-white px-6 py-3.5 font-semibold transition hover:border-[#6C5CE7] hover:text-[#5848D6]"
             >
-              Ver o que está incluso
+              Conhecer a ferramenta
             </a>
           </div>
-          <p className="mt-4 text-sm font-medium text-[#68707D]">
-            Comece no plano Grátis e faça upgrade quando precisar.
+          <p className="mt-5 max-w-sm border-t border-[#E7E7EE] pt-4 text-sm text-[#6E6E7A]">
+            Plano gratuito disponível · aplicativo para Windows
           </p>
-          <div className="mt-5 flex flex-wrap gap-x-6 gap-y-2 text-sm font-medium text-[#68707D]">
-            <span>✓ Sem organização manual</span>
-            <span>✓ Até 2 computadores</span>
-          </div>
         </div>
-        <div className="relative mx-auto w-full max-w-xl">
-          <div className="absolute -left-8 top-14 h-52 w-52 rounded-full bg-[#FF263D]/10 blur-3xl" />
+        <div className="relative mx-auto w-full max-w-2xl lg:translate-y-6">
           <ProductPreview />
+          <p className="mt-3 text-right text-xs text-[#6E6E7A]">
+            01 / Controle sem ruído visual
+          </p>
         </div>
       </section>
 
-      <section className="border-y border-[#DDE1E7] bg-white">
-        <div className="mx-auto grid max-w-7xl grid-cols-2 gap-y-5 px-6 py-7 text-sm font-bold text-[#68707D] sm:grid-cols-4">
-          <span>PLANEJAMENTO</span>
-          <span>CLIENTES</span>
-          <span>TRELLO</span>
-          <span>VÍDEO + IA</span>
-        </div>
-      </section>
-
-      <section id="recursos" className="mx-auto max-w-7xl px-6 py-24">
-        <div className="max-w-3xl">
-          <p className="text-xs font-bold tracking-[.16em] text-[#FF263D]">
-            O QUE O RAFAAU ENTREGA
-          </p>
-          <h2 className="mt-4 text-4xl font-black tracking-[-.04em] sm:text-5xl">
-            Pare de gerenciar conteúdo por mensagens, anotações soltas e
-            memória.
-          </h2>
-          <p className="mt-5 text-lg leading-8 text-[#68707D]">
-            Tenha uma visão clara da operação e um processo repetível, do
-            primeiro briefing até o conteúdo publicado.
-          </p>
-        </div>
-        <div className="mt-12 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {features.map((feature) => (
-            <article
-              key={feature.title}
-              className="rounded-2xl border border-[#DDE1E7] bg-white p-6 transition hover:-translate-y-1 hover:shadow-lg"
+      <section className="border-y border-[#E7E7EE] bg-white">
+        <div className="mx-auto grid max-w-[1180px] grid-cols-2 divide-x divide-y divide-[#E7E7EE] px-5 sm:px-8 md:grid-cols-4 md:divide-y-0">
+          {[
+            'Planejamento editorial',
+            'Gestão de clientes',
+            'Trello conectado',
+            'Vídeo no DaVinci',
+          ].map((item, index) => (
+            <p
+              key={item}
+              className="py-5 pl-4 text-xs font-semibold uppercase tracking-[.12em] text-[#6E6E7A] first:pl-0 md:text-center"
             >
-              <span
-                className={`inline-flex rounded-lg px-3 py-2 text-xs font-black ${feature.color}`}
-              >
-                {feature.number}
-              </span>
-              <h3 className="mt-8 text-xl font-black">{feature.title}</h3>
-              <p className="mt-3 text-sm leading-6 text-[#68707D]">
-                {feature.text}
-              </p>
-            </article>
+              0{index + 1} · {item}
+            </p>
           ))}
         </div>
       </section>
 
       <section
-        id="como-funciona"
-        className="bg-[#17191F] px-6 py-24 text-white"
+        id="produto"
+        className="mx-auto max-w-[1180px] px-5 py-24 sm:px-8 lg:py-32"
       >
-        <div className="mx-auto grid max-w-7xl gap-16 lg:grid-cols-[.82fr_1.18fr]">
-          <div>
-            <p className="text-xs font-bold tracking-[.16em] text-[#FF7C8A]">
-              UM FLUXO QUE A EQUIPE ENTENDE
+        <div className="grid gap-12 lg:grid-cols-[.7fr_1.3fr] lg:items-start">
+          <div className="lg:sticky lg:top-12">
+            <p className="text-xs font-semibold uppercase tracking-[.18em] text-[#6C5CE7]">
+              Clientes sem improviso
             </p>
-            <h2 className="mt-5 text-4xl font-black tracking-[-.04em] sm:text-6xl">
-              Da ideia à entrega, sem perder contexto no caminho.
+            <h2 className="mt-5 max-w-md text-3xl font-semibold leading-tight tracking-[-.04em] sm:text-5xl">
+              A relação inteira com o cliente, não apenas a próxima tarefa.
             </h2>
-            <p className="mt-6 max-w-md leading-7 text-slate-300">
-              Você não compra apenas um calendário. Você ganha uma forma de
-              trabalhar que torna prioridades, prazos e produção visíveis.
+            <p className="mt-6 max-w-md leading-7 text-[#6E6E7A]">
+              Cadastro, contato, contrato e produção permanecem próximos. Você
+              enxerga o que foi combinado e o que precisa acontecer sem procurar
+              em cinco lugares.
             </p>
           </div>
-          <ol className="divide-y divide-white/15">
-            {workflow.map(([title, description], index) => (
-              <li key={title} className="flex gap-5 py-7 first:pt-0">
-                <span className="text-2xl font-black text-[#FF5265]">
-                  0{index + 1}
-                </span>
-                <div>
-                  <h3 className="text-xl font-bold">{title}</h3>
-                  <p className="mt-2 max-w-xl leading-7 text-slate-300">
-                    {description}
-                  </p>
-                </div>
-              </li>
-            ))}
-          </ol>
+          <div>
+            <ClientWorkspace />
+            <div className="mt-8 grid gap-8 border-t border-[#E7E7EE] pt-8 sm:grid-cols-2">
+              <div>
+                <span className="text-3xl font-semibold">30 dias</span>
+                <p className="mt-2 text-sm leading-6 text-[#6E6E7A]">
+                  Aviso claro para contratos próximos do vencimento.
+                </p>
+              </div>
+              <div>
+                <span className="text-3xl font-semibold">1 visão</span>
+                <p className="mt-2 text-sm leading-6 text-[#6E6E7A]">
+                  Receita contratada, clientes ativos e entregas no dashboard.
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
-      <section id="planos" className="mx-auto max-w-7xl px-6 py-24">
-        <div className="text-center">
-          <p className="text-xs font-bold tracking-[.16em] text-[#FF263D]">
-            PLANOS PARA O SEU RITMO
-          </p>
-          <h2 className="mt-4 text-4xl font-black tracking-[-.04em] sm:text-5xl">
-            Comece com o processo que sua operação precisa.
-          </h2>
-          <p className="mx-auto mt-5 max-w-2xl text-[#68707D]">
-            Comece gratuitamente e avance quando precisar de mais clientes,
-            automação, vídeo e inteligência artificial.
+      <section id="fluxo" className="border-y border-[#E7E7EE] bg-white">
+        <div className="mx-auto grid max-w-[1180px] gap-14 px-5 py-24 sm:px-8 lg:grid-cols-[1.2fr_.8fr] lg:items-center lg:py-32">
+          <VideoTimeline />
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[.18em] text-[#6C5CE7]">
+              Do plano ao corte
+            </p>
+            <h2 className="mt-5 text-3xl font-semibold leading-tight tracking-[-.04em] sm:text-5xl">
+              O Vydra acompanha seu fluxo. Não tenta substituí-lo.
+            </h2>
+            <ol className="mt-10 border-t border-[#E7E7EE]">
+              {[
+                [
+                  '01',
+                  'Planeje',
+                  'Organize pautas, formatos e datas em um calendário mensal.',
+                ],
+                [
+                  '02',
+                  'Produza',
+                  'Abra o DaVinci Resolve e prepare cortes e legendas a partir da timeline.',
+                ],
+                [
+                  '03',
+                  'Compartilhe',
+                  'Envie o planejamento ao quadro do Trello que seu cliente já acompanha.',
+                ],
+              ].map(([number, title, text]) => (
+                <li
+                  key={title}
+                  className="grid grid-cols-[2.5rem_1fr] gap-3 border-b border-[#E7E7EE] py-5"
+                >
+                  <span className="text-xs text-[#6C5CE7]">{number}</span>
+                  <div>
+                    <h3 className="font-semibold">{title}</h3>
+                    <p className="mt-2 text-sm leading-6 text-[#6E6E7A]">
+                      {text}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </div>
+        </div>
+      </section>
+
+      <section
+        id="planos"
+        className="mx-auto max-w-[1180px] px-5 py-24 sm:px-8 lg:py-32"
+      >
+        <div className="grid gap-8 border-b border-[#E7E7EE] pb-10 md:grid-cols-[.8fr_1.2fr] md:items-end">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[.18em] text-[#6C5CE7]">
+              Planos
+            </p>
+            <h2 className="mt-5 text-4xl font-semibold tracking-[-.04em] sm:text-5xl">
+              Escolha pelo seu ritmo.
+            </h2>
+          </div>
+          <p className="max-w-xl leading-7 text-[#6E6E7A] md:justify-self-end">
+            Comece gratuitamente. Quando o volume aumentar, avance sem mudar sua
+            forma de trabalhar.
           </p>
         </div>
-        <div className="mx-auto mt-12 grid max-w-6xl gap-5 md:grid-cols-3">
+        <div className="grid md:grid-cols-3">
           {plans.map((plan, index) => (
             <article
               key={plan.code}
-              className={`relative rounded-2xl border p-8 ${index === 1 ? 'border-[#FF263D] bg-white shadow-xl shadow-red-100' : 'border-[#DDE1E7] bg-white'}`}
+              className={`relative border-b border-[#E7E7EE] px-1 py-10 md:border-b-0 md:border-r md:px-7 ${index === 0 ? 'md:pl-0' : ''} ${index === 2 ? 'md:border-r-0 md:pr-0' : ''}`}
             >
               {index === 1 && (
-                <span className="absolute -top-3 right-6 rounded-full bg-[#FF263D] px-3 py-1 text-xs font-bold text-white">
-                  MAIS ESCOLHIDO
-                </span>
+                <span className="absolute inset-x-7 top-0 h-0.5 bg-[#6C5CE7]" />
               )}
-              <p className="text-sm font-bold text-[#68707D]">RAFAAU</p>
-              <h3 className="mt-1 text-3xl font-black">{plan.name}</h3>
-              <p className="mt-7 text-5xl font-black tracking-tight">
-                <small className="text-base">R$</small> {plan.price}
-                <small className="text-base font-medium text-[#68707D]">
-                  /mês
+              <p className="text-xs font-semibold uppercase tracking-[.16em] text-[#6E6E7A]">
+                Vydra {plan.name}
+              </p>
+              <p className="mt-6 text-4xl font-semibold tracking-[-.04em]">
+                <small className="text-base font-normal">R$</small> {plan.price}
+                <small className="text-sm font-normal text-[#6E6E7A]">
+                  {' '}
+                  / mês
                 </small>
               </p>
-              <p className="mt-2 text-sm text-[#68707D]">
-                {plan.code === 'free' ? 'Grátis para sempre' : 'Cobrança mensal; cancele quando quiser'}
+              <p className="mt-3 min-h-12 text-sm leading-6 text-[#6E6E7A]">
+                {plan.note}
               </p>
-              <div
-                className={`mt-6 rounded-xl p-4 ${index === 1 ? 'bg-[#FFF0F2]' : 'bg-[#F0F2F5]'}`}
-              >
-                <p className="text-xs font-bold tracking-wide text-[#9F1D2C]">
-                  CRÉDITOS DE IA
-                </p>
-                <p className="mt-1 text-3xl font-black">
-                  {plan.credits}{' '}
-                  {plan.code !== 'free' && <span className="text-sm font-semibold text-[#68707D]">por mês</span>}
-                </p>
-                <p className="mt-2 text-sm leading-5 text-[#4E5560]">
-                  {plan.use} {plan.code !== 'free' && '1 crédito = 1 análise de vídeo para sugerir cortes.'}
-                </p>
-              </div>
+              <p className="mt-5 border-y border-[#E7E7EE] py-4 text-sm font-semibold text-[#5848D6]">
+                {plan.credits}
+              </p>
               <CheckoutButton plan={plan.code} featured={index === 1} />
-              <ul className="mt-7 space-y-3 border-t border-[#DDE1E7] pt-6 text-sm text-[#4E5560]">
-                {plan.features.map((feature) => <li key={feature}>✓ {feature}</li>)}
+              <ul className="mt-7 space-y-3 text-sm text-[#6E6E7A]">
+                {plan.features.map((feature) => (
+                  <li key={feature} className="flex gap-2">
+                    <span className="text-[#22C55E]">✓</span>
+                    {feature}
+                  </li>
+                ))}
               </ul>
             </article>
           ))}
         </div>
-        <p className="mt-8 text-center text-sm text-[#68707D]">
-          O Essencial é a melhor escolha para social medias autônomos. O Pro atende operações de maior volume.
+        <p className="mt-8 text-sm text-[#6E6E7A]">
+          1 crédito de IA equivale a uma análise de vídeo para sugerir cortes.
         </p>
       </section>
 
-      <section id="download" className="mx-auto max-w-7xl px-6 py-20">
-        <div className="flex flex-col gap-7 rounded-3xl border border-[#DDE1E7] bg-white p-8 shadow-sm sm:p-10 md:flex-row md:items-center md:justify-between">
+      <section id="download" className="bg-[#18181F] text-white">
+        <div className="mx-auto grid max-w-[1180px] gap-10 px-5 py-20 sm:px-8 md:grid-cols-[1fr_auto] md:items-end lg:py-24">
           <div>
-            <p className="text-xs font-bold tracking-[.16em] text-[#FF263D]">
-              APLICATIVO PARA WINDOWS
+            <p className="text-xs font-semibold uppercase tracking-[.18em] text-[#A49BEA]">
+              Aplicativo para Windows
             </p>
-            <h2 className="mt-3 text-3xl font-black tracking-[-.04em] sm:text-4xl">
-              Já assinou? Baixe o rafaau.
+            <h2 className="mt-5 max-w-2xl text-3xl font-semibold leading-tight tracking-[-.04em] sm:text-5xl">
+              Seu espaço de trabalho, instalado onde você trabalha.
             </h2>
-            <p className="mt-3 max-w-2xl leading-7 text-[#68707D]">
-              Instale o aplicativo no seu computador e comece a organizar
-              clientes, conteúdos e produção. O download é feito pelo release
-              oficial do rafaau.
+            <p className="mt-5 max-w-xl leading-7 text-[#B4B4C0]">
+              Baixe o aplicativo, entre com sua conta e mantenha clientes,
+              conteúdo e produção organizados localmente.
             </p>
           </div>
-          <div className="shrink-0">
+          <div>
             <a
               href={DOWNLOAD_URL}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#17191F] px-6 py-4 font-bold text-white transition hover:bg-[#343841] sm:w-auto"
+              className="inline-flex w-full items-center justify-center bg-[#6C5CE7] px-7 py-4 font-semibold transition hover:bg-[#5848D6] sm:w-auto"
             >
-              <span aria-hidden="true">↓</span> Baixar para Windows
+              Baixar Vydra para Windows{' '}
+              <span className="ml-3" aria-hidden="true">
+                ↓
+              </span>
             </a>
-            <p className="mt-3 text-center text-xs text-[#68707D]">
-              Arquivo .exe • Windows 10 ou superior
+            <p className="mt-3 text-center text-xs text-[#A8A8B3]">
+              Arquivo .exe · Windows 10 ou superior
             </p>
           </div>
         </div>
@@ -438,75 +538,45 @@ export default function Home() {
 
       <section
         id="faq"
-        className="border-y border-[#DDE1E7] bg-white px-6 py-24"
+        className="mx-auto grid max-w-[1180px] gap-12 px-5 py-24 sm:px-8 lg:grid-cols-[.55fr_1.45fr] lg:py-32"
       >
-        <div className="mx-auto grid max-w-7xl gap-12 lg:grid-cols-[.7fr_1.3fr]">
-          <div>
-            <p className="text-xs font-bold tracking-[.16em] text-[#FF263D]">
-              PERGUNTAS FREQUENTES
-            </p>
-            <h2 className="mt-4 text-4xl font-black tracking-[-.04em]">
-              Sem letra pequena.
-            </h2>
-            <p className="mt-5 leading-7 text-[#68707D]">
-              Tudo o que você precisa saber antes de começar a organizar sua
-              operação.
-            </p>
-          </div>
-          <div className="divide-y divide-[#DDE1E7] border-y border-[#DDE1E7]">
-            {faqs.map(([question, answer]) => (
-              <details key={question} className="group py-5">
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 font-bold">
-                  <span>{question}</span>
-                  <span className="text-xl text-[#FF263D] transition group-open:rotate-45">
-                    +
-                  </span>
-                </summary>
-                <p className="max-w-2xl pt-3 leading-7 text-[#68707D]">
-                  {answer}
-                </p>
-              </details>
-            ))}
-          </div>
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[.18em] text-[#6C5CE7]">
+            Antes de começar
+          </p>
+          <h2 className="mt-5 text-3xl font-semibold tracking-[-.04em]">
+            Perguntas diretas.
+          </h2>
         </div>
-      </section>
-
-      <section className="bg-[#FF263D] px-6 py-20 text-white">
-        <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[1.2fr_.8fr] lg:items-center">
-          <div>
-            <p className="text-xs font-bold tracking-[.16em] text-red-100">
-              PRONTO PARA SAIR DO CAOS?
-            </p>
-            <h2 className="mt-4 text-4xl font-black tracking-[-.04em] sm:text-6xl">
-              Seu conteúdo merece um processo que funciona todos os dias.
-            </h2>
-            <p className="mt-7 max-w-2xl text-lg leading-7 text-red-50">
-              Planeje conteúdos, acompanhe o andamento e concentre cada cliente
-              em um fluxo local e organizado.
-            </p>
-          </div>
-          <div className="rounded-2xl bg-white/10 p-7 backdrop-blur-sm">
-            <p className="text-lg font-bold">Comece pelo plano Grátis.</p>
-            <p className="mt-2 text-sm leading-6 text-red-100">
-              Conheça o planejamento sem cobrança e escolha um plano pago
-              quando precisar de mais recursos.
-            </p>
-            <a
-              href="#planos"
-              className="mt-6 block rounded-lg bg-white px-7 py-4 text-center font-bold text-[#9F1D2C] transition hover:bg-[#F7F8FA]"
+        <div className="border-t border-[#E7E7EE]">
+          {faqs.map(([question, answer]) => (
+            <details
+              key={question}
+              className="group border-b border-[#E7E7EE] py-6"
             >
-              Escolher meu plano
-            </a>
-          </div>
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-5 text-lg font-semibold">
+                <span>{question}</span>
+                <span
+                  className="text-[#6C5CE7] transition group-open:rotate-45"
+                  aria-hidden="true"
+                >
+                  ＋
+                </span>
+              </summary>
+              <p className="max-w-2xl pt-4 leading-7 text-[#6E6E7A]">
+                {answer}
+              </p>
+            </details>
+          ))}
         </div>
       </section>
 
-      <footer className="mx-auto flex max-w-7xl flex-col gap-4 px-6 py-10 text-sm text-[#68707D] md:flex-row md:items-center md:justify-between">
-        <div className="flex items-center gap-2 font-black text-[#17191F]">
-          <Logo /> rafaau
+      <footer className="border-t border-[#E7E7EE] bg-white">
+        <div className="mx-auto flex max-w-[1180px] flex-col gap-5 px-5 py-10 text-sm text-[#6E6E7A] sm:px-8 md:flex-row md:items-center md:justify-between">
+          <Logo />
+          <span>© 2026 Vydra. Trabalho criativo em ordem.</span>
+          <span>Termos · Privacidade</span>
         </div>
-        <span>© 2026 rafaau. Conteúdo com direção.</span>
-        <span>Termos · Privacidade</span>
       </footer>
     </main>
   );

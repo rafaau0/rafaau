@@ -454,7 +454,7 @@ export function AdminPanel() {
 
   if (checking)
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#F4F2ED]">
+      <main className="flex min-h-screen items-center justify-center bg-[#F8F8FB]">
         <p className="text-base font-semibold text-stone-600">
           Verificando acesso…
         </p>
@@ -463,11 +463,11 @@ export function AdminPanel() {
 
   if (!session)
     return (
-      <main className="grid min-h-screen place-items-center bg-[#F4F2ED] px-5 py-10">
-        <section className="w-full max-w-md overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-xl shadow-stone-900/5">
+      <main className="grid min-h-screen place-items-center bg-[#F8F8FB] px-5 py-10">
+        <section className="w-full max-w-md overflow-hidden border border-[#E7E7EE] bg-white shadow-[0_24px_60px_rgba(24,24,31,.08)]">
           <div className="bg-[#191919] px-7 py-6 text-white">
             <p className="text-3xl font-black tracking-tight">
-              rafaau<span className="text-[#E23A4A]">.</span>
+              Vydra<span className="text-[#6C5CE7]">.</span>
             </p>
             <p className="mt-1 text-sm text-stone-400">Administração privada</p>
           </div>
@@ -513,13 +513,13 @@ export function AdminPanel() {
             <Button
               type="submit"
               disabled={loginLoading}
-              className="h-11 w-full bg-[#E23A4A] text-white hover:bg-[#C92D3C]"
+              className="h-11 w-full rounded-sm bg-[#6C5CE7] text-white hover:bg-[#5848D6]"
             >
               {loginLoading ? 'Entrando…' : 'ENTRAR'}
             </Button>
             <a
               href="/"
-              className="block text-center text-sm font-semibold text-stone-500 hover:text-[#E23A4A]"
+              className="block text-center text-sm font-semibold text-stone-500 hover:text-[#5848D6]"
             >
               Voltar ao site
             </a>
@@ -558,11 +558,11 @@ export function AdminPanel() {
     : [];
 
   return (
-    <main className="min-h-screen bg-[#F4F2ED] text-[#181818] lg:grid lg:grid-cols-[240px_1fr]">
+    <main className="min-h-screen bg-[#F8F8FB] text-[#18181F] lg:grid lg:grid-cols-[240px_1fr]">
       <aside className="flex items-center justify-between bg-[#191919] px-5 py-4 text-white lg:sticky lg:top-0 lg:h-screen lg:flex-col lg:items-stretch lg:px-4 lg:py-6">
         <div>
           <p className="px-2 text-2xl font-black">
-            rafaau<span className="text-[#E23A4A]">.</span>
+            Vydra<span className="text-[#6C5CE7]">.</span>
           </p>
           <p className="mt-1 px-2 text-xs font-semibold tracking-widest text-stone-500">
             ADMIN
@@ -574,13 +574,13 @@ export function AdminPanel() {
         >
           <button
             onClick={() => setView('customers')}
-            className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold ${view === 'customers' ? 'bg-[#E23A4A] text-white' : 'text-stone-400 hover:bg-white/10 hover:text-white'}`}
+            className={`flex items-center gap-3 rounded-sm px-3 py-2.5 text-sm font-semibold ${view === 'customers' ? 'bg-[#6C5CE7] text-white' : 'text-stone-400 hover:bg-white/10 hover:text-white'}`}
           >
             <LayoutDashboard /> Clientes
           </button>
           <button
             onClick={() => setView('audit')}
-            className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold ${view === 'audit' ? 'bg-[#E23A4A] text-white' : 'text-stone-400 hover:bg-white/10 hover:text-white'}`}
+            className={`flex items-center gap-3 rounded-sm px-3 py-2.5 text-sm font-semibold ${view === 'audit' ? 'bg-[#6C5CE7] text-white' : 'text-stone-400 hover:bg-white/10 hover:text-white'}`}
           >
             <ShieldCheck /> Auditoria
           </button>
@@ -608,7 +608,7 @@ export function AdminPanel() {
       <section className="min-w-0 p-5 md:p-8 xl:p-10">
         <header className="mb-8 flex flex-wrap items-end justify-between gap-4">
           <div>
-            <p className="text-sm font-bold uppercase tracking-[0.18em] text-[#E23A4A]">
+            <p className="text-sm font-bold uppercase tracking-[0.18em] text-[#6C5CE7]">
               Operação
             </p>
             <h1 className="mt-1 text-3xl font-black tracking-tight">
@@ -651,7 +651,7 @@ export function AdminPanel() {
                         </p>
                         <p className="mt-2 text-3xl font-black">{value}</p>
                       </div>
-                      <span className="rounded-lg bg-[#FBE8E9] p-2.5 text-[#E23A4A]">
+                      <span className="rounded-sm bg-[#EEEAFE] p-2.5 text-[#6C5CE7]">
                         <Icon />
                       </span>
                     </div>
@@ -863,7 +863,7 @@ export function AdminPanel() {
           </DialogHeader>
           {detail && (
             <div className="space-y-6">
-              <div className="grid gap-4 rounded-xl bg-[#F4F2ED] p-4 sm:grid-cols-2">
+              <div className="grid gap-4 rounded-sm bg-[#F8F8FB] p-4 sm:grid-cols-2">
                 <label className="text-sm font-semibold">
                   Plano
                   <select
@@ -1085,7 +1085,7 @@ export function AdminPanel() {
               Fechar
             </Button>
             <Button
-              className="bg-[#E23A4A] text-white hover:bg-[#C92D3C]"
+              className="bg-[#6C5CE7] text-white hover:bg-[#5848D6]"
               disabled={!detail || reason.trim().length < 3}
               onClick={() => setPendingAction({ kind: 'save' })}
             >

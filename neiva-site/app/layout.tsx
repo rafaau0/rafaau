@@ -12,7 +12,11 @@ const geistMono = Geist_Mono({
   subsets: ['latin'],
 });
 
-export const metadata: Metadata = { title: 'rafaau | Conteúdo organizado para quem atende clientes', description: 'Planejamento editorial, clientes, vídeo e IA para criadores, freelancers e pequenas agências.' };
+export const metadata: Metadata = {
+  title: 'Vydra | Trabalho criativo em ordem',
+  description:
+    'Planejamento editorial, clientes, contratos e produção para profissionais criativos.',
+};
 
 export default function RootLayout({
   children,
