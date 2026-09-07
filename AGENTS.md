@@ -6,7 +6,7 @@ Este repositório contém o produto **Neiva Planner / rafaau**, voltado a criado
 
 Há três aplicações no mesmo repositório:
 
-1. **Aplicativo desktop Windows** (`content_planner/`): mantém clientes e calendários editoriais localmente, exporta PDFs, envia planejamentos ao Trello e abre o DaVinci Resolve instalado para edição externa de vídeo.
+1. **Aplicativo desktop Windows** (`content_planner/`): mantém clientes, contatos, contratos e calendários editoriais localmente, exporta PDFs, envia planejamentos ao Trello e abre o DaVinci Resolve instalado para edição externa de vídeo.
 2. **API remota** (`ai_service/`): mantém contas, licenças, planos, dispositivos, cotas de IA e cobrança; intermedeia chamadas à OpenAI; e protege o segredo OAuth do Trello.
 3. **Site público e administração** (`neiva-site/`): landing page, cadastro/login para checkout, redirecionamento ao Asaas, consulta do status de ativação, download do aplicativo e painel privado `/admin` para administrar assinantes.
 
@@ -106,13 +106,14 @@ Implementado em `content_planner/database.py` com SQL manual e dataclasses `Clie
 
 Tabelas:
 
-- `clientes`: nome, nicho, Instagram, frequência, objetivo, observações, `operation_id` idempotente e timestamps.
+- `clientes`: nome, empresa, CPF/CNPJ, contato, e-mail, telefone, endereço, situação, nicho, Instagram, frequência, objetivo, observações, `operation_id` idempotente e timestamps.
+- `contracts`: histórico de contratos por cliente, com título, escopo, valor mensal em centavos, datas ISO, dia de vencimento, situação, caminho do PDF copiado e `operation_id`; FK para `clientes` com `ON DELETE CASCADE`.
 - `posts`: cliente, data ISO `YYYY-MM-DD`, tipo, plataforma, título, descrição, legenda, CTA, status, `trello_card_id` e `operation_id`; FK para `clientes` com `ON DELETE CASCADE`.
 - `configuracoes`: chave/valor para configurações não secretas e compatibilidade legada.
 
 Há índice `idx_posts_client_date` e índices únicos parciais para `operation_id`. Cada conexão ativa `PRAGMA foreign_keys = ON` e faz commit ao sair do context manager.
 
-O banco padrão é isolado por conta em `database/accounts/<account_id>/content_planner.db`. Sem conta atual (licença legada), usa `database/content_planner.db`. Em build instalado, a raiz equivalente é `%LOCALAPPDATA%\NeivaPlanner\database`. Uma conta moderna não recebe automaticamente o banco legado; associação/migração de titularidade ainda precisa de um fluxo explícito.
+O banco padrão é isolado por conta em `database/accounts/<account_id>/content_planner.db`. Sem conta atual (licença legada), usa `database/content_planner.db`. PDFs de contratos são copiados para `contracts/<client_id>/` ao lado do banco correspondente. Em build instalado, a raiz equivalente é `%LOCALAPPDATA%\NeivaPlanner\database`. Uma conta moderna não recebe automaticamente o banco legado; associação/migração de titularidade ainda precisa de um fluxo explícito.
 
 Não há versionamento formal do esquema do desktop. `CREATE TABLE IF NOT EXISTS` não adiciona colunas novas a bancos antigos; qualquer evolução de esquema precisa de migração explícita e teste com banco existente.
 
@@ -148,6 +149,9 @@ As tabelas são criadas no evento de startup. Três tabelas recebem migrações 
 - `content_planner/plan_rules.py`: limites dos planos `free`, `essencial` e `pro`; plano pago de conta moderna exige confirmação online da API, enquanto ausência de conta continua sendo licença legada Pro.
 - `content_planner/ui.py`: dashboard, clientes, planejamento/calendário, lançador do DaVinci, configurações, modais e orquestração geral. Métodos da edição interna permanecem temporariamente sem entrada de navegação.
 - `content_planner/database.py`: CRUD local e configurações.
+- `content_planner/client_management.py`: validação/formatação brasileira de datas e valores e situação calculada dos contratos.
+- `content_planner/client_management_view.py`: central de clientes, perfil cadastral e CRUD de contratos/PDFs; entra em `ContentPlannerApp` como mixin para não ampliar o controlador principal.
+- `content_planner/form_modal.py`: modal de formulário compartilhado pela central de clientes e pelas telas que permanecem em `ui.py`.
 - `content_planner/pdf_generator.py`: PDF mensal com capa, calendário e tabela de conteúdos.
 - `content_planner/trello_auth.py`: inicia OAuth pela API, abre navegador, consulta status e lista identidade/quadros.
 - `content_planner/trello_api.py`: cria/reutiliza listas e cards diretamente no Trello; usa marcador HTML estável para idempotência.
@@ -187,6 +191,10 @@ As tabelas são criadas no evento de startup. Três tabelas recebem migrações 
 ### Planejamento
 
 Clientes e posts são CRUD local. O calendário consulta por cliente/mês. A exportação busca os posts daquele mês e gera PDF. O plano grátis conta PDFs numa chave local `PLAN_PDF_EXPORTS_YYYY-MM`.
+
+### Gestão local de clientes e contratos
+
+A navegação **Clientes** é a central única de cadastro. O perfil reúne informações cadastrais e contratos; não existe um segundo cadastro paralelo. Cada contrato pode ter um PDF, que é copiado para a pasta gerenciada da conta em vez de depender do arquivo original. O status “Vencido” e o alerta “Vence em breve” são calculados a partir de contratos armazenados como `Ativo`; contratos vencendo em até 30 dias e a soma mensal dos contratos ativos aparecem também no dashboard. Esses dados são estritamente locais e não representam as assinaturas Asaas administradas pelo site.
 
 ### Trello
 
@@ -345,6 +353,7 @@ Estado verificado diretamente em 2026-09-05: 41 testes Python passam; `npm run l
 4. Ao alterar login, plano ou cobrança, analisar em conjunto API, `account_sessions.py`, `account_login.py`, `plan_rules.py` e checkout do site.
    Para administração, revisar também `AdminSession`, CSRF, `/admin-api`, auditoria e os efeitos do próximo webhook Asaas.
 5. Ao alterar persistência, preservar isolamento por conta, migração de instalações legadas e bancos já existentes.
+   Ao alterar contratos, preservar valores em centavos, datas ISO e a cópia/remoção segura de PDFs somente dentro da pasta gerenciada `contracts`.
 6. Ao alterar Trello, preservar entrega única do token, vínculo da requisição ao cliente e idempotência de listas/cards.
 7. Ao alterar vídeo, validar arquivo local e build PyInstaller, disponibilidade de FFmpeg/FFprobe, vídeo sem áudio, caminhos Windows e custo de CPU/RAM.
    Durante a migração para editor externo, validar também detecção manual/automática e abertura do DaVinci Resolve real.
@@ -527,11 +536,12 @@ O código foi alterado para tratar os 51 achados do relatório. O histórico da 
 - Vídeo (`QA-031` a `QA-043`): edição invalida palavras antigas, segmentação usa timestamps reais, jobs são vinculados ao projeto/origem, análise de silêncio é consumida e restaurada só ao falhar, writer único, destinos únicos, exportação sem legenda, flag mestre de efeitos, timeouts/limpeza, preservação de palavras/configurações, validação de margens, filter script para comandos grandes e temporário ASS opaco para caminhos com apóstrofo.
 - Distribuição/site (`QA-044` a `QA-051`): release com tag falha sem certificado e valida Authenticode; mensagens de API são normalizadas; fetch/polling possuem timeout/status; a oferta agora é somente mensal sem trial; foram removidos depoimentos/métrica/placeholders e ações sociais/recuperação falsas; lint/build do site entraram no CI.
 - O executável passou a gravar exportações em `%LOCALAPPDATA%\NeivaPlanner\exports`, evitando tentativa de escrita em `Program Files`.
+- O cadastro local passou a ser uma central de gestão com dados de contato, histórico de contratos, PDFs copiados para a pasta isolada da conta, alertas de vencimento e receita mensal contratada no dashboard. A migração do SQLite é aditiva e preserva clientes e posts existentes.
 
 ### Estado dos testes
 
 - `python -m compileall -q content_planner ai_service tests`: passou.
-- `.venv\Scripts\python.exe -m unittest discover -s tests -q`: 54/54 passaram em 2026-09-06 após a inclusão da base administrativa e recuperação de senha por configuração temporária.
+- `.venv\Scripts\python.exe -m unittest discover -s tests -q`: 57/57 passaram em 2026-09-06 após a central local de clientes/contratos, a base administrativa e a recuperação de senha por configuração temporária.
 - `npm run lint` em `neiva-site`: passou para `app/` e componentes publicados.
 - `npm run build` em `neiva-site`: passou; Vinext ainda informa apenas que a classificação estática da rota é desconhecida.
 - `git diff --check`: passou.

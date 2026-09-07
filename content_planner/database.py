@@ -4,6 +4,7 @@ import sqlite3
 import sys
 import os
 import shutil
+import uuid
 from datetime import date
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -42,6 +43,29 @@ class Client:
     objective: str
     notes: str
     operation_id: str | None = None
+    company_name: str = ""
+    document: str = ""
+    email: str = ""
+    phone: str = ""
+    address: str = ""
+    contact_name: str = ""
+    status: str = "Ativo"
+
+
+@dataclass(slots=True)
+class Contract:
+    id: int | None
+    client_id: int
+    title: str
+    description: str = ""
+    value_cents: int = 0
+    start_date: str = ""
+    end_date: str = ""
+    due_day: int | None = None
+    status: str = "Rascunho"
+    attachment_path: str = ""
+    notes: str = ""
+    operation_id: str | None = None
 
 
 @dataclass(slots=True)
@@ -63,6 +87,7 @@ class Post:
 class Database:
     def __init__(self, db_path: Path | None = None) -> None:
         self.db_path = db_path or account_database_path()
+        self.contracts_dir = self.db_path.parent / "contracts"
         self._migrate_legacy_database()
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.initialize()
@@ -136,6 +161,18 @@ class Database:
             client_columns = {row[1] for row in conn.execute("PRAGMA table_info(clientes)")}
             if "operation_id" not in client_columns:
                 conn.execute("ALTER TABLE clientes ADD COLUMN operation_id TEXT DEFAULT NULL")
+            client_additions = {
+                "company_name": "TEXT NOT NULL DEFAULT ''",
+                "document": "TEXT NOT NULL DEFAULT ''",
+                "email": "TEXT NOT NULL DEFAULT ''",
+                "phone": "TEXT NOT NULL DEFAULT ''",
+                "address": "TEXT NOT NULL DEFAULT ''",
+                "contact_name": "TEXT NOT NULL DEFAULT ''",
+                "status": "TEXT NOT NULL DEFAULT 'Ativo'",
+            }
+            for column, definition in client_additions.items():
+                if column not in client_columns:
+                    conn.execute(f"ALTER TABLE clientes ADD COLUMN {column} {definition}")
             post_columns = {row[1] for row in conn.execute("PRAGMA table_info(posts)")}
             if "operation_id" not in post_columns:
                 conn.execute("ALTER TABLE posts ADD COLUMN operation_id TEXT DEFAULT NULL")
@@ -144,6 +181,30 @@ class Database:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_posts_client_date ON posts(client_id, post_date)")
             conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_clientes_operation_id ON clientes(operation_id) WHERE operation_id IS NOT NULL")
             conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_posts_operation_id ON posts(operation_id) WHERE operation_id IS NOT NULL")
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS contracts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    client_id INTEGER NOT NULL,
+                    title TEXT NOT NULL,
+                    description TEXT NOT NULL DEFAULT '',
+                    value_cents INTEGER NOT NULL DEFAULT 0,
+                    start_date TEXT NOT NULL DEFAULT '',
+                    end_date TEXT NOT NULL DEFAULT '',
+                    due_day INTEGER DEFAULT NULL,
+                    status TEXT NOT NULL DEFAULT 'Rascunho',
+                    attachment_path TEXT NOT NULL DEFAULT '',
+                    notes TEXT NOT NULL DEFAULT '',
+                    operation_id TEXT DEFAULT NULL,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (client_id) REFERENCES clientes(id) ON DELETE CASCADE
+                )
+                """
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_contracts_client ON contracts(client_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_contracts_status_end ON contracts(status, end_date)")
+            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_contracts_operation_id ON contracts(operation_id) WHERE operation_id IS NOT NULL")
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS configuracoes (
@@ -159,13 +220,17 @@ class Database:
             try:
                 cur = conn.execute(
                     """
-                    INSERT INTO clientes (name, niche, instagram, posting_frequency, objective, notes, operation_id)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO clientes
+                    (name, niche, instagram, posting_frequency, objective, notes, operation_id,
+                     company_name, document, email, phone, address, contact_name, status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         self._clean(client.name), self._clean(client.niche), self._clean(client.instagram),
                         self._clean(client.posting_frequency), self._clean(client.objective), self._clean(client.notes),
                         client.operation_id,
+                        self._clean(client.company_name), self._clean(client.document), self._clean(client.email),
+                        self._clean(client.phone), self._clean(client.address), self._clean(client.contact_name), client.status,
                     ),
                 )
             except sqlite3.IntegrityError:
@@ -186,6 +251,7 @@ class Database:
                 """
                 UPDATE clientes
                 SET name=?, niche=?, instagram=?, posting_frequency=?, objective=?, notes=?,
+                    company_name=?, document=?, email=?, phone=?, address=?, contact_name=?, status=?,
                     updated_at=CURRENT_TIMESTAMP
                 WHERE id=?
                 """,
@@ -196,24 +262,36 @@ class Database:
                     self._clean(client.posting_frequency),
                     self._clean(client.objective),
                     self._clean(client.notes),
+                    self._clean(client.company_name),
+                    self._clean(client.document),
+                    self._clean(client.email),
+                    self._clean(client.phone),
+                    self._clean(client.address),
+                    self._clean(client.contact_name),
+                    client.status,
                     client.id,
                 ),
             )
 
     def delete_client(self, client_id: int) -> None:
+        attachments = [contract.attachment_path for contract in self.list_contracts(client_id) if contract.attachment_path]
         with self.connect() as conn:
             conn.execute("DELETE FROM clientes WHERE id=?", (client_id,))
+        for attachment in attachments:
+            self._delete_managed_attachment(attachment)
 
-    def search_clients(self, term: str = "") -> list[Client]:
+    def search_clients(self, term: str = "", status: str = "") -> list[Client]:
         like = f"%{term.strip()}%"
         with self.connect() as conn:
             rows = conn.execute(
                 """
                 SELECT * FROM clientes
-                WHERE name LIKE ? OR niche LIKE ? OR instagram LIKE ?
+                WHERE (name LIKE ? OR niche LIKE ? OR instagram LIKE ? OR company_name LIKE ?
+                       OR document LIKE ? OR email LIKE ? OR phone LIKE ? OR contact_name LIKE ?)
+                  AND (? = '' OR status = ?)
                 ORDER BY name COLLATE NOCASE
                 """,
-                (like, like, like),
+                (like, like, like, like, like, like, like, like, status, status),
             ).fetchall()
         return [self._row_to_client(row) for row in rows]
 
@@ -221,6 +299,97 @@ class Database:
         with self.connect() as conn:
             row = conn.execute("SELECT * FROM clientes WHERE id=?", (client_id,)).fetchone()
         return self._row_to_client(row) if row else None
+
+    def create_contract(self, contract: Contract) -> int:
+        self._validate_contract(contract)
+        with self.connect() as conn:
+            try:
+                cur = conn.execute(
+                    """
+                    INSERT INTO contracts
+                    (client_id, title, description, value_cents, start_date, end_date, due_day,
+                     status, attachment_path, notes, operation_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        contract.client_id, self._clean(contract.title), self._clean(contract.description),
+                        contract.value_cents, contract.start_date, contract.end_date, contract.due_day,
+                        contract.status, contract.attachment_path, self._clean(contract.notes), contract.operation_id,
+                    ),
+                )
+            except sqlite3.IntegrityError:
+                if not contract.operation_id:
+                    raise
+                row = conn.execute("SELECT id FROM contracts WHERE operation_id=?", (contract.operation_id,)).fetchone()
+                if row:
+                    return int(row["id"])
+                raise
+            return int(cur.lastrowid)
+
+    def update_contract(self, contract: Contract) -> None:
+        if contract.id is None:
+            raise ValueError("Contract id is required for update.")
+        self._validate_contract(contract)
+        previous = self.get_contract(contract.id)
+        with self.connect() as conn:
+            conn.execute(
+                """
+                UPDATE contracts
+                SET title=?, description=?, value_cents=?, start_date=?, end_date=?, due_day=?,
+                    status=?, attachment_path=?, notes=?, updated_at=CURRENT_TIMESTAMP
+                WHERE id=? AND client_id=?
+                """,
+                (
+                    self._clean(contract.title), self._clean(contract.description), contract.value_cents,
+                    contract.start_date, contract.end_date, contract.due_day, contract.status,
+                    contract.attachment_path, self._clean(contract.notes), contract.id, contract.client_id,
+                ),
+            )
+        if previous and previous.attachment_path and previous.attachment_path != contract.attachment_path:
+            self._delete_managed_attachment(previous.attachment_path)
+
+    def get_contract(self, contract_id: int) -> Contract | None:
+        with self.connect() as conn:
+            row = conn.execute("SELECT * FROM contracts WHERE id=?", (contract_id,)).fetchone()
+        return self._row_to_contract(row) if row else None
+
+    def list_contracts(self, client_id: int) -> list[Contract]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM contracts WHERE client_id=? ORDER BY start_date DESC, id DESC",
+                (client_id,),
+            ).fetchall()
+        return [self._row_to_contract(row) for row in rows]
+
+    def delete_contract(self, contract_id: int) -> None:
+        contract = self.get_contract(contract_id)
+        if not contract:
+            return
+        with self.connect() as conn:
+            conn.execute("DELETE FROM contracts WHERE id=?", (contract_id,))
+        if contract.attachment_path:
+            self._delete_managed_attachment(contract.attachment_path)
+
+    def import_contract_attachment(self, source: Path, client_id: int) -> str:
+        source = source.resolve()
+        if not source.is_file() or source.suffix.lower() != ".pdf":
+            raise ValueError("Selecione um contrato válido em PDF.")
+        if source.stat().st_size > 25 * 1024 * 1024:
+            raise ValueError("O PDF do contrato deve ter no máximo 25 MB.")
+        target_dir = self.contracts_dir / str(client_id)
+        target_dir.mkdir(parents=True, exist_ok=True)
+        target = target_dir / f"{uuid.uuid4().hex}.pdf"
+        shutil.copy2(source, target)
+        return str(target)
+
+    def _delete_managed_attachment(self, raw_path: str) -> None:
+        try:
+            path = Path(raw_path).resolve()
+            managed_root = self.contracts_dir.resolve()
+            if path.is_relative_to(managed_root) and path.is_file():
+                path.unlink()
+        except (OSError, ValueError):
+            pass
 
     def create_post(self, post: Post) -> int:
         self._validate_post(post)
@@ -363,7 +532,53 @@ class Database:
             posts = conn.execute("SELECT COUNT(*) FROM posts").fetchone()[0]
             pending = conn.execute("SELECT COUNT(*) FROM posts WHERE status='Pendente'").fetchone()[0]
             done = conn.execute("SELECT COUNT(*) FROM posts WHERE status='Concluído'").fetchone()[0]
-        return {"clients": clients, "posts": posts, "pending": pending, "done": done}
+            active_clients = conn.execute("SELECT COUNT(*) FROM clientes WHERE status='Ativo'").fetchone()[0]
+            active_contracts = conn.execute(
+                "SELECT COUNT(*) FROM contracts WHERE status='Ativo' AND (end_date='' OR end_date >= date('now'))"
+            ).fetchone()[0]
+            expiring_contracts = conn.execute(
+                "SELECT COUNT(*) FROM contracts WHERE status='Ativo' AND end_date<>'' "
+                "AND end_date BETWEEN date('now') AND date('now', '+30 days')"
+            ).fetchone()[0]
+            expired_contracts = conn.execute(
+                "SELECT COUNT(*) FROM contracts WHERE status='Ativo' AND end_date<>'' AND end_date < date('now')"
+            ).fetchone()[0]
+            monthly_revenue_cents = conn.execute(
+                "SELECT COALESCE(SUM(value_cents), 0) FROM contracts "
+                "WHERE status='Ativo' AND (end_date='' OR end_date >= date('now'))"
+            ).fetchone()[0]
+        return {
+            "clients": clients,
+            "posts": posts,
+            "pending": pending,
+            "done": done,
+            "active_clients": active_clients,
+            "active_contracts": active_contracts,
+            "expiring_contracts": expiring_contracts,
+            "expired_contracts": expired_contracts,
+            "monthly_revenue_cents": monthly_revenue_cents,
+        }
+
+    def expiring_contracts(self, days: int = 30) -> list[tuple[Contract, Client]]:
+        modifier = f"+{max(0, min(days, 365))} days"
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT contracts.*
+                FROM contracts
+                WHERE contracts.status='Ativo' AND contracts.end_date<>''
+                  AND contracts.end_date BETWEEN date('now') AND date('now', ?)
+                ORDER BY contracts.end_date, contracts.id
+                """,
+                (modifier,),
+            ).fetchall()
+        results = []
+        for row in rows:
+            contract = self._row_to_contract(row)
+            client = self.get_client(contract.client_id)
+            if client:
+                results.append((contract, client))
+        return results
 
     @staticmethod
     def _clean(value: str) -> str:
@@ -373,6 +588,24 @@ class Database:
     def _validate_client(client: Client) -> None:
         if not client.name.strip():
             raise ValueError("Nome do cliente é obrigatório.")
+        if client.status not in {"Ativo", "Inativo"}:
+            raise ValueError("Status do cliente inválido.")
+
+    @staticmethod
+    def _validate_contract(contract: Contract) -> None:
+        if not contract.title.strip():
+            raise ValueError("O título do contrato é obrigatório.")
+        if contract.value_cents < 0:
+            raise ValueError("O valor do contrato não pode ser negativo.")
+        if contract.due_day is not None and not 1 <= contract.due_day <= 31:
+            raise ValueError("O dia de vencimento deve estar entre 1 e 31.")
+        if contract.status not in {"Rascunho", "Ativo", "Encerrado", "Cancelado"}:
+            raise ValueError("Status do contrato inválido.")
+        for raw_date in (contract.start_date, contract.end_date):
+            if raw_date:
+                date.fromisoformat(raw_date)
+        if contract.start_date and contract.end_date and contract.end_date < contract.start_date:
+            raise ValueError("A data final não pode ser anterior à data inicial.")
 
     @staticmethod
     def _validate_post(post: Post) -> None:
@@ -398,6 +631,30 @@ class Database:
             objective=row["objective"],
             notes=row["notes"],
             operation_id=row["operation_id"] if "operation_id" in row.keys() else None,
+            company_name=row["company_name"] if "company_name" in row.keys() else "",
+            document=row["document"] if "document" in row.keys() else "",
+            email=row["email"] if "email" in row.keys() else "",
+            phone=row["phone"] if "phone" in row.keys() else "",
+            address=row["address"] if "address" in row.keys() else "",
+            contact_name=row["contact_name"] if "contact_name" in row.keys() else "",
+            status=row["status"] if "status" in row.keys() else "Ativo",
+        )
+
+    @staticmethod
+    def _row_to_contract(row: sqlite3.Row) -> Contract:
+        return Contract(
+            id=row["id"],
+            client_id=row["client_id"],
+            title=row["title"],
+            description=row["description"],
+            value_cents=row["value_cents"],
+            start_date=row["start_date"],
+            end_date=row["end_date"],
+            due_day=row["due_day"],
+            status=row["status"],
+            attachment_path=row["attachment_path"],
+            notes=row["notes"],
+            operation_id=row["operation_id"],
         )
 
     @staticmethod

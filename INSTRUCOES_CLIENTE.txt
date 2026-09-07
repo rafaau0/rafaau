@@ -2,7 +2,7 @@ NEIVA PLANNER
 
 COMO ABRIR
 1. Abra NeivaPlanner_v1.exe.
-2. Cadastre os clientes e organize os conteúdos em Planejamento.
+2. Em Clientes, cadastre contatos e contratos; depois organize os conteúdos em Planejamento.
 3. Na própria tela Planejamento, exporte o PDF ou envie os conteúdos ao Trello.
 4. No Estúdio de Vídeo, instale o comando e abra o DaVinci Resolve.
 5. No DaVinci, abra Espaço de trabalho > Scripts > Edit > rafaau_timeline.
@@ -15,7 +15,7 @@ COMANDO DO DAVINCI
 - Depois da geração, arraste o SRT do Media Pool ou da pasta aberta para a nova timeline.
 
 PASTAS IMPORTANTES
-- %LOCALAPPDATA%\NeivaPlanner\database: guarda clientes e conteúdos.
+- %LOCALAPPDATA%\NeivaPlanner\database: guarda clientes, contratos, PDFs anexados e conteúdos.
 - %LOCALAPPDATA%\NeivaPlanner\exports: guarda PDFs, vídeos e downloads.
 - %LOCALAPPDATA%\NeivaPlanner\davinci_integration\captions: guarda as legendas SRT geradas pelo painel.
 

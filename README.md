@@ -1,6 +1,6 @@
 # Neiva Planner
 
-Aplicativo desktop para planejar calendários editoriais, clientes, conteúdos, PDFs e cards no Trello. Os dados ficam somente neste computador, em um banco SQLite local.
+Aplicativo desktop para gerenciar clientes e contratos, planejar calendários editoriais, conteúdos, PDFs e cards no Trello. Os dados ficam somente neste computador, em um banco SQLite local.
 
 O **Estúdio de Vídeo** abre o DaVinci Resolve instalado no computador do cliente e instala um comando no menu **Espaço de trabalho → Scripts → Edit → rafaau_timeline**. O comando analisa o vídeo já aberto, pede confirmação antes de aplicar, cria uma nova timeline sem os silêncios detectados e gera localmente legendas em português para uso no Resolve gratuito. A timeline original nunca é alterada.
 
@@ -10,8 +10,8 @@ A interface é adaptativa: em janelas estreitas, o menu lateral se recolhe e a n
 
 ## Navegação
 
-- **Dashboard**: resumo do conteúdo e atalhos principais.
-- **Clientes**: cadastro, busca e manutenção dos clientes.
+- **Dashboard**: resumo de conteúdo, clientes ativos, contratos, vencimentos e receita mensal contratada.
+- **Clientes**: central de cadastro, contatos, histórico comercial e contratos com PDF anexado.
 - **Planejamento**: calendário, cadastro de conteúdo, exportação de PDF e envio ao Trello na mesma tela.
 - **Estúdio de Vídeo**: instalação do painel de timeline e abertura do DaVinci Resolve configurado.
 - **Configurações**: credenciais e caminhos de armazenamento.
@@ -94,4 +94,4 @@ Cada card recebe um identificador interno do post local. Caso a conexão caia ap
 
 ## Backup
 
-Em desenvolvimento, faça cópias periódicas de `database\content_planner.db` e de `database\accounts`. No executável, copie `%LOCALAPPDATA%\NeivaPlanner\database`, incluindo `accounts\<id>\content_planner.db`. Esses arquivos contêm clientes e conteúdos; credenciais ficam separadamente no cofre do Windows.
+Em desenvolvimento, faça cópias periódicas de `database\content_planner.db` e de `database\accounts`. No executável, copie toda a pasta `%LOCALAPPDATA%\NeivaPlanner\database`, incluindo `accounts\<id>\content_planner.db` e as subpastas `contracts` com os PDFs anexados. Esses arquivos contêm clientes, contratos e conteúdos; credenciais ficam separadamente no cofre do Windows.

@@ -18,6 +18,9 @@ import requests
 from PIL import Image
 
 from .database import Client, Database, Post
+from .client_management import format_date_br, format_money
+from .client_management_view import ClientManagementMixin
+from .form_modal import FormModal
 from .pdf_generator import PDFGenerator
 from .trello_api import TrelloAPI, TrelloConfig
 from .trello_auth import TrelloBoard, authorize as authorize_trello, get_app_key as get_trello_app_key, get_identity as get_trello_identity, list_boards as list_trello_boards
@@ -71,7 +74,7 @@ LOGO_PATH = _asset_path("neiva_logo.png")
 ICON_PATH = _asset_path("neiva_logo.ico")
 
 # Tokens visuais centralizados. Não participam de nenhuma regra de negócio.
-class ContentPlannerApp(ctk.CTk):
+class ContentPlannerApp(ClientManagementMixin, ctk.CTk):
     def __init__(self) -> None:
         super().__init__()
         self.db = Database()
@@ -310,8 +313,39 @@ class ContentPlannerApp(ctk.CTk):
                 anchor="w", padx=18, pady=(0, 18)
             )
 
+        business = ctk.CTkFrame(frame, fg_color=UI["surface"], corner_radius=RADIUS["md"], border_width=1, border_color=UI["border"])
+        business.grid(row=1, column=0, sticky="ew", pady=(0, 18))
+        for index in range(5):
+            business.grid_columnconfigure(index, weight=1)
+        contract_metrics = [
+            ("Clientes ativos", stats["active_clients"], UI["text"]),
+            ("Contratos ativos", stats["active_contracts"], UI["success"]),
+            ("Vencem em 30 dias", stats["expiring_contracts"], UI["warning"]),
+            ("Contratos vencidos", stats["expired_contracts"], UI["error"]),
+            ("Receita contratada", format_money(stats["monthly_revenue_cents"]), UI["accent"]),
+        ]
+        for col, (label, value, color) in enumerate(contract_metrics):
+            card = ctk.CTkFrame(business, fg_color="transparent", corner_radius=0)
+            card.grid(row=0, column=col, sticky="ew")
+            ctk.CTkLabel(card, text=label.upper(), text_color=UI["muted"], font=font(9, "bold")).pack(anchor="w", padx=22, pady=(18, 2))
+            ctk.CTkLabel(card, text=str(value), text_color=color, font=font(25, "bold", heading=True)).pack(anchor="w", padx=18, pady=(0, 18))
+
+        expiring = self.db.expiring_contracts()
+        if expiring:
+            alerts = ctk.CTkFrame(frame, fg_color="#FFF8EA", corner_radius=RADIUS["md"], border_width=1, border_color="#E9C98B")
+            alerts.grid(row=2, column=0, sticky="ew", pady=(0, 18))
+            ctk.CTkLabel(alerts, text="CONTRATOS PRÓXIMOS DO VENCIMENTO", text_color=UI["warning"], font=font(10, "bold")).pack(anchor="w", padx=18, pady=(14, 6))
+            for contract, client in expiring[:5]:
+                ctk.CTkLabel(
+                    alerts,
+                    text=f"{client.name} · {contract.title} · vence em {format_date_br(contract.end_date)}",
+                    text_color=UI["text"],
+                    font=font(12),
+                ).pack(anchor="w", padx=18, pady=(0, 7))
+            ctk.CTkButton(alerts, text="Abrir gestão de clientes", width=180, command=self.show_clients, **secondary_button()).pack(anchor="e", padx=18, pady=(4, 14))
+
         quick = ctk.CTkFrame(frame, fg_color=UI["surface"], corner_radius=RADIUS["md"], border_width=1, border_color=UI["border"])
-        quick.grid(row=1, column=0, sticky="ew")
+        quick.grid(row=3, column=0, sticky="ew")
         for index in range(3):
             quick.grid_columnconfigure(index, weight=1)
 
@@ -328,68 +362,6 @@ class ContentPlannerApp(ctk.CTk):
             row=1, column=2, sticky="ew", padx=18, pady=(0, 18)
         )
 
-    def show_clients(self) -> None:
-        frame = self._set_active_view("Clientes", "Clientes", "Cadastre, edite e pesquise contas atendidas.")
-        toolbar = ctk.CTkFrame(frame, fg_color="transparent")
-        toolbar.grid(row=0, column=0, sticky="ew", pady=(0, 12))
-        toolbar.grid_columnconfigure(0, weight=1)
-
-        search = ctk.CTkEntry(toolbar, placeholder_text="Pesquisar por nome, nicho ou Instagram")
-        search.grid(row=0, column=0, sticky="ew", padx=(0, 12))
-        ctk.CTkButton(
-            toolbar,
-            text="Pesquisar",
-            width=120,
-            command=lambda: self._render_clients_list(list_frame, search.get()),
-        ).grid(row=0, column=1, padx=(0, 12))
-        ctk.CTkButton(toolbar, text="Novo cliente", width=140, command=self._open_client_modal).grid(row=0, column=2)
-
-        list_frame = ctk.CTkFrame(frame, fg_color="transparent")
-        list_frame.grid(row=1, column=0, sticky="nsew")
-        list_frame.grid_columnconfigure(0, weight=1)
-        self._render_clients_list(list_frame)
-
-    def _render_clients_list(self, parent: ctk.CTkFrame, term: str = "") -> None:
-        for child in parent.winfo_children():
-            child.destroy()
-
-        clients = self.db.search_clients(term)
-        if not clients:
-            ctk.CTkLabel(parent, text="Nenhum cliente encontrado.", text_color=UI["muted"]).grid(row=0, column=0, sticky="w", pady=20)
-            return
-
-        for row, client in enumerate(clients):
-            item = ctk.CTkFrame(parent, fg_color=UI["surface"], corner_radius=10, border_width=1, border_color=UI["border"])
-            item.grid(row=row, column=0, sticky="ew", pady=6)
-            item.grid_columnconfigure(0, weight=1)
-            ctk.CTkLabel(item, text=client.name, font=ctk.CTkFont(size=17, weight="bold")).grid(
-                row=0, column=0, sticky="w", padx=16, pady=(12, 0)
-            )
-            ctk.CTkLabel(
-                item,
-                text=f"{client.niche}  |  {client.instagram}  |  {client.posting_frequency}",
-                text_color=UI["muted"],
-            ).grid(row=1, column=0, sticky="w", padx=16, pady=(2, 12))
-            ctk.CTkButton(item, text="Planejamento", width=110, command=lambda c=client: self._select_client_calendar(c)).grid(
-                row=0, column=1, rowspan=2, padx=(0, 8), pady=12
-            )
-            ctk.CTkButton(
-                item,
-                text="Editar",
-                width=90,
-                fg_color=UI["secondary"],
-                hover_color=UI["secondary_hover"],
-                text_color=UI["text"],
-                command=lambda c=client: self._open_client_modal(c),
-            ).grid(row=0, column=2, rowspan=2, padx=(0, 8), pady=12)
-            ctk.CTkButton(
-                item,
-                text="Excluir",
-                width=90,
-                fg_color=UI["error"],
-                hover_color="#A91F30",
-                command=lambda c=client: self._delete_client(c),
-            ).grid(row=0, column=3, rowspan=2, padx=(0, 16), pady=12)
 
     def show_planning(self) -> None:
         frame = self._set_active_view("Planejamento", "Planejamento Editorial", "Organize conteúdos e, no mesmo lugar, exporte o PDF ou envie ao Trello.")
@@ -1300,43 +1272,6 @@ class ContentPlannerApp(ctk.CTk):
         except ValueError:
             return None
 
-    def _open_client_modal(self, client: Client | None = None) -> None:
-        if client is None and self.plan.max_clients is not None and len(self.db.search_clients()) >= self.plan.max_clients:
-            self._show_warning("Limite do plano", f"O plano {self.plan.name} permite até {self.plan.max_clients} cliente. Faça upgrade para cadastrar mais.")
-            return
-        modal = FormModal(self, "Cliente", width=620, height=640)
-        fields = {
-            "name": modal.entry("Nome", client.name if client else ""),
-            "niche": modal.entry("Nicho", client.niche if client else ""),
-            "instagram": modal.entry("Instagram", client.instagram if client else ""),
-            "posting_frequency": modal.entry("Frequência de postagem", client.posting_frequency if client else ""),
-            "objective": modal.text("Objetivo", client.objective if client else "", height=90),
-            "notes": modal.text("Observações", client.notes if client else "", height=120),
-        }
-        operation_id = uuid.uuid4().hex
-
-        def save() -> None:
-            if not fields["name"].get().strip():
-                self._show_warning("Validação", "Nome é obrigatório.")
-                return
-            payload = Client(
-                id=client.id if client else None,
-                name=fields["name"].get(),
-                niche=fields["niche"].get(),
-                instagram=fields["instagram"].get(),
-                posting_frequency=fields["posting_frequency"].get(),
-                objective=fields["objective"].get("1.0", "end").strip(),
-                notes=fields["notes"].get("1.0", "end").strip(),
-                operation_id=client.operation_id if client else operation_id,
-            )
-            if client:
-                self.db.update_client(payload)
-            else:
-                self.selected_client_id = self.db.create_client(payload)
-            modal.destroy()
-            self._refresh_active_view()
-
-        modal.actions(save)
 
     def _open_day_modal(self, day: int) -> None:
         if self.selected_client_id is None:
@@ -1435,7 +1370,7 @@ class ContentPlannerApp(ctk.CTk):
     def _delete_client(self, client: Client) -> None:
         if client.id is None:
             return
-        if messagebox.askyesno("Excluir cliente", f"Excluir {client.name} e todas as postagens?"):
+        if messagebox.askyesno("Excluir cliente", f"Excluir {client.name}, todas as postagens, contratos e PDFs anexados?"):
             self.db.delete_client(client.id)
             if self.selected_client_id == client.id:
                 self.selected_client_id = None
@@ -1576,43 +1511,3 @@ class ContentPlannerApp(ctk.CTk):
             "Configurações": self.show_settings,
         }
         views.get(self.active_view, self.show_dashboard)()
-
-
-class FormModal(ctk.CTkToplevel):
-    def __init__(self, master: ctk.CTk, title: str, width: int, height: int) -> None:
-        super().__init__(master)
-        self.title(title)
-        self.geometry(f"{width}x{height}")
-        self.transient(master)
-        self.grab_set()
-        self.configure(fg_color=UI["canvas"])
-        self.body = ctk.CTkScrollableFrame(self, fg_color=UI["canvas"])
-        self.body.pack(fill="both", expand=True, padx=20, pady=20)
-        ctk.CTkLabel(self.body, text=title, font=ctk.CTkFont(size=22, weight="bold")).pack(anchor="w", pady=(0, 14))
-
-    def entry(self, label: str, value: str = "") -> ctk.CTkEntry:
-        ctk.CTkLabel(self.body, text=label, text_color=UI["text"]).pack(anchor="w", pady=(8, 4))
-        entry = ctk.CTkEntry(self.body, height=38)
-        entry.insert(0, value)
-        entry.pack(fill="x")
-        return entry
-
-    def text(self, label: str, value: str = "", height: int = 100) -> ctk.CTkTextbox:
-        ctk.CTkLabel(self.body, text=label, text_color=UI["text"]).pack(anchor="w", pady=(8, 4))
-        textbox = ctk.CTkTextbox(self.body, height=height)
-        textbox.insert("1.0", value)
-        textbox.pack(fill="x")
-        return textbox
-
-    def option(self, label: str, values: list[str], value: str) -> ctk.CTkOptionMenu:
-        ctk.CTkLabel(self.body, text=label, text_color=UI["text"]).pack(anchor="w", pady=(8, 4))
-        option = ctk.CTkOptionMenu(self.body, values=values)
-        option.set(value)
-        option.pack(fill="x")
-        return option
-
-    def actions(self, save_command) -> None:
-        actions = ctk.CTkFrame(self.body, fg_color="transparent")
-        actions.pack(fill="x", pady=(18, 0))
-        ctk.CTkButton(actions, text="Cancelar", fg_color=UI["secondary"], hover_color=UI["secondary_hover"], text_color=UI["text"], command=self.destroy).pack(side="right", padx=(8, 0))
-        ctk.CTkButton(actions, text="Salvar", command=save_command).pack(side="right")
