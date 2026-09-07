@@ -5,7 +5,7 @@ import sys
 import os
 import shutil
 import uuid
-from datetime import date
+from datetime import date, timedelta
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -526,51 +526,66 @@ class Database:
         with self.connect() as conn:
             conn.execute("DELETE FROM configuracoes WHERE chave=?", (key,))
 
-    def dashboard_stats(self) -> dict[str, int]:
+    def dashboard_data(self, year: int, month: int, client_id: int | None = None,
+                       today: date | None = None) -> dict:
+        """Métricas mensais; prioridades, agenda e contratos na data local atual."""
+        today = today or date.today()
+        scope = " AND client_id=?" if client_id is not None else ""
+        params = (client_id,) if client_id is not None else ()
         with self.connect() as conn:
-            clients = conn.execute("SELECT COUNT(*) FROM clientes").fetchone()[0]
-            posts = conn.execute("SELECT COUNT(*) FROM posts").fetchone()[0]
-            pending = conn.execute("SELECT COUNT(*) FROM posts WHERE status='Pendente'").fetchone()[0]
-            done = conn.execute("SELECT COUNT(*) FROM posts WHERE status='Concluído'").fetchone()[0]
-            active_clients = conn.execute("SELECT COUNT(*) FROM clientes WHERE status='Ativo'").fetchone()[0]
-            active_contracts = conn.execute(
-                "SELECT COUNT(*) FROM contracts WHERE status='Ativo' AND (end_date='' OR end_date >= date('now'))"
-            ).fetchone()[0]
-            expiring_contracts = conn.execute(
-                "SELECT COUNT(*) FROM contracts WHERE status='Ativo' AND end_date<>'' "
-                "AND end_date BETWEEN date('now') AND date('now', '+30 days')"
-            ).fetchone()[0]
-            expired_contracts = conn.execute(
-                "SELECT COUNT(*) FROM contracts WHERE status='Ativo' AND end_date<>'' AND end_date < date('now')"
-            ).fetchone()[0]
-            monthly_revenue_cents = conn.execute(
-                "SELECT COALESCE(SUM(value_cents), 0) FROM contracts "
-                "WHERE status='Ativo' AND (end_date='' OR end_date >= date('now'))"
-            ).fetchone()[0]
+            counts = dict(conn.execute(
+                "SELECT status, COUNT(*) FROM posts WHERE substr(post_date,1,7)=?" + scope + " GROUP BY status",
+                (f"{year:04d}-{month:02d}", *params),
+            ).fetchall())
+            priorities = conn.execute(
+                "SELECT * FROM posts WHERE status<>'Concluído' AND post_date<=?" + scope + " ORDER BY post_date, id",
+                (today.isoformat(), *params),
+            ).fetchall()
+            upcoming = conn.execute(
+                "SELECT * FROM posts WHERE status<>'Concluído' AND post_date>? AND post_date<=?" + scope + " ORDER BY post_date,id",
+                (today.isoformat(), (today + timedelta(days=7)).isoformat(), *params),
+            ).fetchall()
+            contracts = conn.execute("SELECT * FROM contracts WHERE 1=1" + scope + " ORDER BY end_date,id", params).fetchall()
+        clients = {c.id: c for c in self.search_clients() if client_id is None or c.id == client_id}
+        current = [self._row_to_contract(r) for r in contracts if r['status'] == 'Ativo'
+                   and (not r['start_date'] or r['start_date'] <= today.isoformat())
+                   and (not r['end_date'] or r['end_date'] >= today.isoformat())]
+        alerts = [self._row_to_contract(r) for r in contracts if r['status'] == 'Ativo' and r['end_date']
+                  and r['end_date'] <= (today + timedelta(days=30)).isoformat()]
+        return dict(counts=counts, clients=clients,
+                    priorities=[self._row_to_post(r) for r in priorities],
+                    upcoming=[self._row_to_post(r) for r in upcoming], contracts=current, alerts=alerts,
+                    revenue=sum(c.value_cents for c in current if clients[c.client_id].status == 'Ativo'))
+
+    def dashboard_stats(self) -> dict[str, int]:
+        today = date.today()
+        data = self.dashboard_data(today.year, today.month, today=today)
+        with self.connect() as conn:
+            counts = dict(conn.execute("SELECT status, COUNT(*) FROM posts GROUP BY status").fetchall())
         return {
-            "clients": clients,
-            "posts": posts,
-            "pending": pending,
-            "done": done,
-            "active_clients": active_clients,
-            "active_contracts": active_contracts,
-            "expiring_contracts": expiring_contracts,
-            "expired_contracts": expired_contracts,
-            "monthly_revenue_cents": monthly_revenue_cents,
+            "clients": len(data["clients"]),
+            "posts": sum(counts.values()),
+            "pending": counts.get("Pendente", 0),
+            "done": counts.get("Concluído", 0),
+            "active_clients": sum(c.status == "Ativo" for c in data["clients"].values()),
+            "active_contracts": len(data["contracts"]),
+            "expiring_contracts": sum(c.end_date >= today.isoformat() for c in data["alerts"]),
+            "expired_contracts": sum(c.end_date < today.isoformat() for c in data["alerts"]),
+            "monthly_revenue_cents": data["revenue"],
         }
 
     def expiring_contracts(self, days: int = 30) -> list[tuple[Contract, Client]]:
-        modifier = f"+{max(0, min(days, 365))} days"
+        today = date.today()
         with self.connect() as conn:
             rows = conn.execute(
                 """
                 SELECT contracts.*
                 FROM contracts
                 WHERE contracts.status='Ativo' AND contracts.end_date<>''
-                  AND contracts.end_date BETWEEN date('now') AND date('now', ?)
+                  AND contracts.end_date BETWEEN ? AND ?
                 ORDER BY contracts.end_date, contracts.id
                 """,
-                (modifier,),
+                (today.isoformat(), (today + timedelta(days=max(0, min(days, 365)))).isoformat()),
             ).fetchall()
         results = []
         for row in rows:

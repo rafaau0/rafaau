@@ -2,6 +2,14 @@
 
 ## 1. Objetivo do projeto
 
+### Dashboard atualizada (2026-09-07)
+
+- `content_planner/dashboard_view.py` contém `DashboardMixin`; `ui.py` mantém a navegação e os formulários compartilhados.
+- `Database.dashboard_data` fornece contagens editoriais filtradas por mês/cliente (identidade por ID), pendências até hoje, próximos sete dias e contratos. Agenda e contratos usam a data local atual, independentemente do mês escolhido, conforme os textos da tela.
+- Contratos vigentes respeitam início e término inclusivos; o valor mensal contratado soma apenas contratos vigentes de clientes ativos e não significa pagamento recebido. Contratos vencidos e vencendo em até 30 dias abrem diretamente o perfil do cliente.
+- Novo conteúdo permite escolher cliente e data; salvar a edição retorna à tela ativa. Indicadores se reorganizam em quatro, duas ou uma coluna conforme a largura.
+- Testes de regressão em `tests/test_dashboard.py` cobrem filtros, homônimos, limites da agenda, vigência, clientes inativos e banco vazio. Nenhuma migração de banco é necessária para essa dashboard.
+
 Este repositório contém o produto **Vydra** (nomes internos legados: **Neiva Planner / rafaau**), voltado a criadores, freelancers e pequenas agências que organizam conteúdo para clientes.
 
 Há três aplicações no mesmo repositório:

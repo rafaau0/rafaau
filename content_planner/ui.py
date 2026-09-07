@@ -20,6 +20,7 @@ from PIL import Image
 from .database import Client, Database, Post
 from .client_management import format_date_br, format_money
 from .client_management_view import ClientManagementMixin
+from .dashboard_view import DashboardMixin
 from .form_modal import FormModal
 from .pdf_generator import PDFGenerator
 from .trello_api import TrelloAPI, TrelloConfig
@@ -74,7 +75,7 @@ LOGO_PATH = _asset_path("neiva_logo.png")
 ICON_PATH = _asset_path("neiva_logo.ico")
 
 # Tokens visuais centralizados. Não participam de nenhuma regra de negócio.
-class ContentPlannerApp(ClientManagementMixin, ctk.CTk):
+class ContentPlannerApp(DashboardMixin, ClientManagementMixin, ctk.CTk):
     def __init__(self) -> None:
         super().__init__()
         self.db = Database()
@@ -313,77 +314,6 @@ class ContentPlannerApp(ClientManagementMixin, ctk.CTk):
     def _show_error(self, title: str, message: str) -> None:
         messagebox.showerror(title, message)
 
-    def show_dashboard(self) -> None:
-        frame = self._set_active_view("Dashboard", "Dashboard", "Visão executiva do calendário editorial.")
-        stats = self.db.dashboard_stats()
-
-        cards = ctk.CTkFrame(frame, fg_color=UI["surface"], corner_radius=RADIUS["md"], border_width=1, border_color=UI["border"])
-        cards.grid(row=0, column=0, sticky="ew", pady=(0, 18))
-        for index in range(4):
-            cards.grid_columnconfigure(index, weight=1)
-
-        metrics = [
-            ("Clientes", stats["clients"], UI["text"]),
-            ("Conteúdos", stats["posts"], UI["text"]),
-            ("Pendentes", stats["pending"], UI["warning"]),
-            ("Concluídos", stats["done"], UI["success"]),
-        ]
-        for col, (label, value, color) in enumerate(metrics):
-            card = ctk.CTkFrame(cards, fg_color="transparent", corner_radius=0)
-            card.grid(row=0, column=col, sticky="ew")
-            ctk.CTkLabel(card, text=label.upper(), text_color=UI["muted"], font=font(9, "bold")).pack(anchor="w", padx=22, pady=(18, 2))
-            ctk.CTkLabel(card, text=str(value), text_color=color, font=font(32, "bold", heading=True)).pack(
-                anchor="w", padx=18, pady=(0, 18)
-            )
-
-        business = ctk.CTkFrame(frame, fg_color=UI["surface"], corner_radius=RADIUS["md"], border_width=1, border_color=UI["border"])
-        business.grid(row=1, column=0, sticky="ew", pady=(0, 18))
-        for index in range(5):
-            business.grid_columnconfigure(index, weight=1)
-        contract_metrics = [
-            ("Clientes ativos", stats["active_clients"], UI["text"]),
-            ("Contratos ativos", stats["active_contracts"], UI["success"]),
-            ("Vencem em 30 dias", stats["expiring_contracts"], UI["warning"]),
-            ("Contratos vencidos", stats["expired_contracts"], UI["error"]),
-            ("Receita contratada", format_money(stats["monthly_revenue_cents"]), UI["accent"]),
-        ]
-        for col, (label, value, color) in enumerate(contract_metrics):
-            card = ctk.CTkFrame(business, fg_color="transparent", corner_radius=0)
-            card.grid(row=0, column=col, sticky="ew")
-            ctk.CTkLabel(card, text=label.upper(), text_color=UI["muted"], font=font(9, "bold")).pack(anchor="w", padx=22, pady=(18, 2))
-            ctk.CTkLabel(card, text=str(value), text_color=color, font=font(25, "bold", heading=True)).pack(anchor="w", padx=18, pady=(0, 18))
-
-        expiring = self.db.expiring_contracts()
-        if expiring:
-            alerts = ctk.CTkFrame(frame, fg_color="#FFF9EE", corner_radius=RADIUS["md"], border_width=1, border_color="#E9D8B8")
-            alerts.grid(row=2, column=0, sticky="ew", pady=(0, 18))
-            ctk.CTkLabel(alerts, text="CONTRATOS PRÓXIMOS DO VENCIMENTO", text_color=UI["warning"], font=font(10, "bold")).pack(anchor="w", padx=18, pady=(14, 6))
-            for contract, client in expiring[:5]:
-                ctk.CTkLabel(
-                    alerts,
-                    text=f"{client.name} · {contract.title} · vence em {format_date_br(contract.end_date)}",
-                    text_color=UI["text"],
-                    font=font(12),
-                ).pack(anchor="w", padx=18, pady=(0, 7))
-            ctk.CTkButton(alerts, text="Abrir gestão de clientes", width=180, command=self.show_clients, **secondary_button()).pack(anchor="e", padx=18, pady=(4, 14))
-
-        quick = ctk.CTkFrame(frame, fg_color=UI["surface"], corner_radius=RADIUS["md"], border_width=1, border_color=UI["border"])
-        quick.grid(row=3, column=0, sticky="ew")
-        for index in range(3):
-            quick.grid_columnconfigure(index, weight=1)
-
-        ctk.CTkLabel(quick, text="AÇÕES RÁPIDAS", text_color=UI["text"], font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold")).grid(
-            row=0, column=0, sticky="w", padx=18, pady=(18, 10)
-        )
-        ctk.CTkButton(quick, text="Novo cliente", command=self._open_client_modal).grid(
-            row=1, column=0, sticky="ew", padx=18, pady=(0, 18)
-        )
-        ctk.CTkButton(quick, text="Abrir planejamento", command=self.show_planning).grid(
-            row=1, column=1, sticky="ew", padx=18, pady=(0, 18)
-        )
-        ctk.CTkButton(quick, text="Exportar PDF", command=self.show_export).grid(
-            row=1, column=2, sticky="ew", padx=18, pady=(0, 18)
-        )
 
 
     def show_planning(self) -> None:
@@ -1386,7 +1316,7 @@ class ContentPlannerApp(ClientManagementMixin, ctk.CTk):
             modal.destroy()
             if parent_modal:
                 parent_modal.destroy()
-            self.show_calendar()
+            self._refresh_active_view()
 
         modal.actions(save)
 
